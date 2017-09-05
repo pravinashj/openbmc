@@ -1,5 +1,5 @@
 before_script:
-   - sudo apt-get install -y git build-essential libsdl1.2-dev texinfo gawk chrpath diffstat
+   - sudo apt-get install -y --force-yes git build-essential libsdl1.2-dev texinfo gawk chrpath diffstat qemu-system-arm libvirt0 libvirt-bin bridge-utils uml-utilities qemu-system-common
    - sudo easy_install tox
    - sudo easy_install pip
    - export OPENBMC_HOST=$QEMU_IP
