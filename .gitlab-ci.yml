@@ -2,6 +2,7 @@ before_script:
    - sudo apt-get install -y --force-yes git build-essential libsdl1.2-dev texinfo gawk chrpath diffstat qemu-system-arm libvirt0 libvirt-bin bridge-utils uml-utilities qemu-system-common
    - sudo easy_install tox
    - sudo easy_install pip
+   # For Automated test below exports are done
    - export OPENBMC_HOST=$QEMU_IP
    - export OPENBMC_PASSWORD=0penBmc
    - export OPENBMC_USERNAME=root
@@ -9,13 +10,26 @@ before_script:
    - export IPMI_COMMAND=External
    - export IPMI_PASSWORD=PASSW0RD
    
-build1:
+build_palmetto:
  stage: build
  script:
    - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-palmetto/conf
    - . openbmc-env
    - bitbake obmc-phosphor-image
 
+build_ast2500:
+ stage: build
+ script:
+  - export TEMPLATECONF=meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500/conf
+  - . openbmc-env
+  - bitbake obmc-phosphor-image
+  
+build_firestone:
+ stage: build
+ script:
+  - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-firestone/conf
+  - . openbmc-env
+  - bitbake obmc-phosphor-image
    
 test1:
  stage: test
