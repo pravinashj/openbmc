@@ -16,6 +16,9 @@ build_palmetto:
    - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-palmetto/conf
    - . openbmc-env
    - bitbake obmc-phosphor-image
+ artifacts:
+   paths:
+     - ./build/tmp/deploy/images/
 
 build_ast2500:
  stage: build
@@ -23,6 +26,9 @@ build_ast2500:
   - export TEMPLATECONF=meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500/conf
   - . openbmc-env
   - bitbake obmc-phosphor-image
+ artifacts:
+  paths:
+   - ./build/tmp/deploy/images/
   
 build_firestone:
  stage: build
@@ -30,6 +36,9 @@ build_firestone:
   - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-firestone/conf
   - . openbmc-env
   - bitbake obmc-phosphor-image
+ artifacts:
+  paths:
+   - ./build/tmp/deploy/images/
    
 test1:
  stage: test
