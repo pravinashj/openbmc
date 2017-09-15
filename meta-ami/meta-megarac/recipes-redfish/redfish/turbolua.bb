@@ -68,7 +68,7 @@ EXTRA_OEMAKEINST = "\
 
 do_compile() {
 	     #${CC} helloworld.c -o helloworld
-		 oe_runmake ${EXTRA_OEMAKE}
+		 oe_runmake
 }
 
 do_install() {

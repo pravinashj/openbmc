@@ -3,24 +3,35 @@
 # Yocto Project Development Manual.
 #
 
-SUMMARY = "Simple helloworld application"
+SUMMARY = "AMI Redfish Server"
 SECTION = "redfish"
-LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
+LICENSE = "Proprietary"
+LIC_FILES_CHKSUM = "file://LICENSE;md5=1da0b1af5a77f8f404b2df6d7e4ee37c"
 
-SRC_URI = "file://helloworld.c"
+SRCREV = "005737aee8994de7dc01339410473e530b88d6f7"
+SRC_URI = "git://git@ubuntu-cloud.us.megatrends.com/redfish/redfish-lua.git;protocol=ssh"
 
-S = "${WORKDIR}"
+S = "${WORKDIR}/git"
 
-DEPENDS += "turbolua"
+DEPENDS += "turbolua redis luaposix33"
 
-TARGET_CC_ARCH += "${LDFLAGS}" 
+APP_DIR = "${S}/app"
 
 do_compile() {
-	     ${CC} helloworld.c -o helloworld
+		cd ${APP_DIR}
+		for f in $(find . -name "*.lua"); do
+			mkdir -p ${WORKDIR}/output/`dirname "$f"`
+			luajit -b -s "$f" ${WORKDIR}/output/"$f"
+		done
+		cd ${WORKDIR}
 }
 
 do_install() {
-	     install -d ${D}${bindir}
-	     install -m 0755 helloworld ${D}${bindir}
+		mkdir -p ${D}/usr/local/redfish/
+		mkdir -p ${D}/etc/init.d/
+		cp -R ${WORKDIR}/output/* ${D}/usr/local/redfish/
+		cp -R ${S}/redfish-server ${D}/etc/init.d/
+		cp -R ${S}/db_init ${D}/usr/local/redfish/db_init
 }
+
+FILES_${PN} += "${prefix} ${sysconfdir}"
