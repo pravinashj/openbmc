@@ -3,7 +3,7 @@ HOMEPAGE = "https://github.com/diegonehab/luasocket"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=ab6706baf6d39a6b0fa2613a3b0831e7"
 
-DEPENDS += "lua-native lua"
+DEPENDS += "lua-native lua5.1"
 
 SRCREV = "d1ec29be7f982db75864155dd61a058902e1cae2"
 SRC_URI = "git://github.com/diegonehab/luasocket.git \
