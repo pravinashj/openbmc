@@ -25,6 +25,7 @@ build_ast2500:
  script:
   - export TEMPLATECONF=meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500/conf
   - . openbmc-env
+  - bitbake -c clean redfish
   - bitbake obmc-phosphor-image
  artifacts:
   paths:
