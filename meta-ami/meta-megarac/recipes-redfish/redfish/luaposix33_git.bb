@@ -13,7 +13,9 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=7dd2aad04bb7ca212e69127ba8d58f9f"
 SECTION = "libs"
 
 SRCREV = "0e56d7ed756509eb6a4806bd31c088e14b74a853"
-SRC_URI = "git://github.com/luaposix/luaposix"
+SRC_URI = "git://github.com/luaposix/luaposix \
+		   file://mkdir_fix.patch \
+		   "
 
 S = "${WORKDIR}/git"
 
