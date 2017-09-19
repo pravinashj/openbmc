@@ -15,6 +15,7 @@ build_palmetto:
  script:
    - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-palmetto/conf
    - . openbmc-env
+   - bitbake -c clean redfish
    - bitbake obmc-phosphor-image
  artifacts:
    paths:
@@ -25,6 +26,7 @@ build_ast2500:
  script:
   - export TEMPLATECONF=meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500/conf
   - . openbmc-env
+  - bitbake -c clean redfish
   - bitbake obmc-phosphor-image
  artifacts:
   paths:
@@ -35,6 +37,7 @@ build_firestone:
  script:
   - export TEMPLATECONF=meta-openbmc-machines/meta-openpower/meta-ibm/meta-firestone/conf
   - . openbmc-env
+  - bitbake -c clean redfish
   - bitbake obmc-phosphor-image
  only: 
   - master
