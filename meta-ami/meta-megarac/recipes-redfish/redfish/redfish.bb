@@ -13,7 +13,7 @@ SRC_URI = "git://git@ubuntu-cloud.us.megatrends.com/redfish/redfish-lua.git;prot
 
 S = "${WORKDIR}/git"
 
-DEPENDS += "turbolua redis luaposix33"
+DEPENDS += "turbolua redis luaposix33 bit32"
 
 APP_DIR = "${S}/app"
 
