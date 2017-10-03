@@ -36,10 +36,11 @@ PACKAGECONFIG ??= "zlib openssl"
 PACKAGECONFIG[zlib] = "--shared-zlib,,zlib"
 PACKAGECONFIG[openssl] = "--shared-openssl,,openssl"
 
+
 EXTRA_OEMAKE = "\
     Q= E='@:' \
     \
-    CCOPT= CCOPT_x86= CFLAGS= LDFLAGS= TARGET_STRIP='@:' \
+    CCOPT= CCOPT_x86= CFLAGS='-DTURBO_NO_SSL=1' LDFLAGS= TARGET_STRIP='@:' \
     \
     'TARGET_SYS=${LUA_TARGET_OS}' \
     \

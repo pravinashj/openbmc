@@ -34,7 +34,7 @@ do_install () {
     oe_runmake \
         'INSTALL_TOP=${D}${prefix}' \
         'INSTALL_BIN=${D}${bindir}' \
-        'INSTALL_INC=${D}${includedir}/' \
+        'INSTALL_INC=${D}${includedir}/lua5.1' \
         'INSTALL_MAN=${D}${mandir}/man1' \
         'INSTALL_SHARE=${D}${datadir}/lua' \
         'INSTALL_LIB=${D}${libdir}' \
