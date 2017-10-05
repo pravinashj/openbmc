@@ -27,10 +27,12 @@ do_compile() {
 }
 
 do_install() {
-		mkdir -p ${D}/usr/local/redfish/
-		mkdir -p ${D}/etc/init.d/
+		install -d ${D}/usr/local/redfish/
+		install -d ${D}/usr/local/redfish/oem
+		install -d ${D}/usr/local/redfish/extensions/constants
+		install -d ${D}/etc/init.d/
 		cp -R ${WORKDIR}/output/* ${D}/usr/local/redfish/
-		cp -R ${S}/redfish-server ${D}/etc/init.d/
+		install -m 0755 ${S}/redfish-server ${D}/etc/init.d/redfish-server
 		cp -R ${S}/db_init ${D}/usr/local/redfish/db_init
 }
 
