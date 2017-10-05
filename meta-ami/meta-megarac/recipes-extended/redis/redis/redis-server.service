@@ -5,6 +5,7 @@ Description=Redis-server daemon
 Type=forking
 After=clear-once.service
 Restart=always
+ExecStartPre=-/bin/mkdir -p /run/redis
 ExecStart=/usr/bin/redis-server /etc/redis/redis.conf
 
 [Install]
