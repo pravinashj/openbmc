@@ -19,4 +19,5 @@ INHERIT += "extrausers"
 EXTRA_USERS_PARAMS = " \
   usermod -p '\$1\$UGMqyqdG\$FZiylVFmRRfl9Z0Ue8G7e/' root; \
   "
+PREFERRED_VERSION_nodejs = "0.10.48"
 IMAGE_INSTALL_append += " luajit redis nodejs redfish turbolua luaposix33 bit32 lua-socket lua5.1 lua-filesystem"

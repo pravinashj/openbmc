@@ -19,6 +19,7 @@ BBLAYERS ?= " \
   ##OEROOT##/meta-openbmc-machines/meta-evb/meta-evb-aspeed \
   ##OEROOT##/meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500 \
   ##OEROOT##/meta-ami/meta-megarac \
+  ##OEROOT##/meta-nodejs \
   "
 BBLAYERS_NON_REMOVABLE ?= " \
   ##OEROOT##/meta \
@@ -34,4 +35,5 @@ BBLAYERS_NON_REMOVABLE ?= " \
   ##OEROOT##/meta-openbmc-machines/meta-evb/meta-evb-aspeed \
   ##OEROOT##/meta-openbmc-machines/meta-evb/meta-evb-aspeed/meta-evb-ast2500 \
   ##OEROOT##/meta-ami/meta-megarac \
+  ##OEROOT##/meta-nodejs \
   "
