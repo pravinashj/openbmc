@@ -14,3 +14,18 @@ bitbake obmc-phosphor-image
 
 -The flash image location
 build/tmp/deploy/images/evb-ast2500/flash-evb-ast2500
+
+-The AST2500 U-Boot flashing commands
+setenv bootfile path_of_tftp/flash-evb-ast2500
+dhcp
+protect off all
+erase all
+cp.b 0x83000000 0x20000000 0x2000000
+
+
+-The OpenBMC login accout info
+Account : root
+Password: 0penBmc
+
+-** The simulation execution only for palmetto platform only **
+sudo qemu-system-arm -m 256 -M palmetto-bmc -nographic -drive file=tmp/deploy/images/palmetto/flash-palmetto,format=raw,if=mtd -net nic,macaddr=C0:FF:EE:00:00:08,model=ftgmac100 -net bridge,id=net0,helper=/usr/lib/qemu/qemu-bridge-helper,br=virbr0
