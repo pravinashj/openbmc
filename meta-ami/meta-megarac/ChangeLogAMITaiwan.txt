@@ -1,3 +1,5 @@
+2018-01-22
+Add driver poring example "batterybacked-mod" recipe
 2018-01-19
 666c1c159624f7f38131c3f0ad66dad1202a0eaa
 Enable kernel modules support.
