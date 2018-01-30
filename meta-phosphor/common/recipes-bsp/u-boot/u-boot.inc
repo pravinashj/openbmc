@@ -5,9 +5,11 @@ UBRANCH = "v2016.07-aspeed-openbmc"
 SRC_URI = "git://git@github.com/openbmc/u-boot.git;branch=${UBRANCH};protocol=https"
 
 SRC_URI += "file://0001-configs-ast-Add-redundnant-env.patch"
+SRC_URI += "file://0002-drivers-mtd-spi-Kconfig.patch"
 
 SRC_URI += "${@bb.utils.contains('MACHINE_FEATURES', 'obmc-ubi-fs', \
-    'file://0001-config-ast-common-hack-bootopts.patch \
-     file://0004-config-ast-common-ubi-bootops.patch', '', d)}"
+	'file://0001-config-ast-common-hack-bootopts.patch \
+	file://0004-config-ast-common-ubi-bootops.patch','',d)}"
 
 PV = "v2016.07+git${SRCPV}"
+
