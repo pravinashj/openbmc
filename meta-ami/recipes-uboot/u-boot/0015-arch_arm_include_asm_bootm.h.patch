@@ -1,0 +1,21 @@
+--- git-orig/arch/arm/include/asm/bootm.h	2018-01-31 09:48:11.025610067 +0000
++++ git/arch/arm/include/asm/bootm.h	2018-02-05 14:13:50.948687385 +0000
+@@ -17,11 +17,17 @@
+ 		defined(CONFIG_CMDLINE_TAG) || \
+ 		defined(CONFIG_INITRD_TAG) || \
+ 		defined(CONFIG_SERIAL_TAG) || \
+-		defined(CONFIG_REVISION_TAG)
++		defined(CONFIG_REVISION_TAG)|| \
++		defined(CONFIG_ENETADDR_TAG)
+ # define BOOTM_ENABLE_TAGS		1
+ #else
+ # define BOOTM_ENABLE_TAGS		0
+ #endif
++#ifdef CONFIG_ENETADDR_TAG
++# define BOOTM_ENABLE_ENETADDR_TAGS	1
++#else
++# define BOOTM_ENABLE_ENETADDR_TAGS	0
++#endif
+ 
+ #ifdef CONFIG_SETUP_MEMORY_TAGS
+ # define BOOTM_ENABLE_MEMORY_TAGS	1
