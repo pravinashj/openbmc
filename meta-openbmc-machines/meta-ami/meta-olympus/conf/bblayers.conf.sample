@@ -14,6 +14,7 @@ BBLAYERS ?= " \
   ##OEROOT##/import-layers/meta-openembedded/meta-python \
   ##OEROOT##/import-layers/meta-virtualization \
   ##OEROOT##/meta-phosphor \
+  ##OEROOT##/meta-ami \
   ##OEROOT##/meta-openbmc-bsp/meta-aspeed \
   ##OEROOT##/meta-openbmc-bsp/meta-aspeed/meta-ast2400 \
   ##OEROOT##/meta-openbmc-machines/meta-ami \
@@ -28,6 +29,7 @@ BBLAYERS_NON_REMOVABLE ?= " \
   ##OEROOT##/import-layers/meta-openembedded/meta-python \
   ##OEROOT##/import-layers/meta-virtualization \
   ##OEROOT##/meta-phosphor \
+  ##OEROOT##/meta-ami \
   ##OEROOT##/meta-openbmc-bsp/meta-aspeed \
   ##OEROOT##/meta-openbmc-bsp/meta-aspeed/meta-ast2400 \
   ##OEROOT##/meta-openbmc-machines/meta-ami \
