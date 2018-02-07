@@ -1,0 +1,11 @@
+--- a/common/autoboot.c	2018-02-01 11:52:33.894902204 +0000
++++ b/common/autoboot.c	2018-02-01 11:56:52.294894749 +0000
+@@ -244,7 +244,7 @@
+ 				break;
+ 			}
+ 			udelay(10000);
+-		} while (!abort && get_timer(ts) < 1000);
++		} while (!abort && get_timer(ts) < ( CONFIG_SYS_HZ / 2 ));
+ 
+ 		printf("\b\b\b%2d ", bootdelay);
+ 	}

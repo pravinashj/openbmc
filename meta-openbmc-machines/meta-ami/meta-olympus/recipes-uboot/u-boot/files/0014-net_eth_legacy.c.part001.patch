@@ -1,0 +1,11 @@
+--- git-orig/net/eth_legacy.c	2018-01-31 09:48:11.349610058 +0000
++++ git/net/eth_legacy.c	2018-02-01 13:53:49.134692320 +0000
+@@ -196,6 +196,8 @@
+ 		for (d = eth_devices; d->next != eth_devices; d = d->next)
+ 			;
+ 		d->next = dev;
++        eth_current = dev;
++		eth_current_changed();
+ 	}
+ 
+ 	dev->state = ETH_STATE_INIT;

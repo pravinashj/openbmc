@@ -1,0 +1,11 @@
+--- a/arch/arm/mach-aspeed/Makefile	2018-02-05 16:06:33.956492278 +0000
++++ b/arch/arm/mach-aspeed/Makefile	2018-02-05 16:10:21.400485717 +0000
+@@ -11,7 +11,7 @@
+ #
+ 
+ 
+-obj-y += timer.o reset.o cpuinfo.o ast-scu.o ast-ahbc.o ast-sdmc.o ast_eth.o ast_i2c.o
++obj-y += timer.o reset.o cpuinfo.o ast-scu.o ast-ahbc.o ast-sdmc.o ast_eth.o ast_i2c.o interrupts.o
+ obj-$(CONFIG_AST_SPI_NOR) += flash.o
+ obj-$(CONFIG_ARCH_AST2500) += platform_g5.o
+ obj-$(CONFIG_ARCH_AST2400) += platform_g4.o

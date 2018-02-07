@@ -1,0 +1,491 @@
+--- git-orig/board/aspeed/ast-g4/ast-g4.c	2018-01-31 09:48:11.189610062 +0000
++++ git/board/aspeed/ast-g4/ast-g4.c	2018-02-05 11:54:53.776927905 +0000
+@@ -14,14 +14,390 @@
+ #include <asm/arch/regs-ahbc.h>
+ #include <asm/arch/regs-scu.h>
+ #include <asm/io.h>
++#include "ast_hw.h"
++#define AST_FMC_REG_BASE	0x1e620000
++#define AST_FMC_FLASH_CTRL_REG	0x00
++#define AST_CE0_CTRL_REGISTER	0x30
++#define AST_CE1_CTRL_REGISTER	0x34
++#define AST_CE2_CTRL_REGISTER	0x38
++#define AST_CE3_CTRL_REGISTER	0x3C
++#define AST_CE4_CTRL_REGISTER	0x40
++
++#define AST_SCU_REG_BASE	0x1e6e2000
++#define AST_SCU_MULTI_FN_REG	0x88
++
++#define AST_EN_ROMCS0_4_PINS	0x0F000000		// Enable ROMCS[0-4] in SCU
++
++#define SPI_CONTROL_REG			0x04
++
++#if !defined(CONFIG_AST2500) && !defined(CONFIG_AST3200)
++#define AST_CE_SPI_CHIPS		0x000002AA		// Set CE[0-4] as SPI
++#define AST_CE0_SEGMENT_ADDRESS 0x48400000      // 0x20000000 - 0x23FFFFFF
++#define AST_CE1_SEGMENT_ADDRESS 0x4C480000      // 0x24000000 - 0x25FFFFFF
++#define AST_CE2_SEGMENT_ADDRESS 0x504C0000      // 0x26000000 - 0x27FFFFFF
++#define AST_CE3_SEGMENT_ADDRESS 0x54500000      // 0x28000000 - 0x29FFFFFF
++#define AST_CE4_SEGMENT_ADDRESS 0x58540000      // 0x2A000000 - 0x2BFFFFFF  		
++#else
++#define AST_CE_SPI_CHIPS		0x0000002A		// Set CE[0-3] as SPI 
++#define AST_CE0_SEGMENT_ADDRESS 0x50400000      // 0x20000000 - 0x27FFFFFF
++#define AST_CE1_SEGMENT_ADDRESS 0x54500000      // 0x28000000 - 0x29FFFFFF
++#define AST_CE2_SEGMENT_ADDRESS 0x58540000      // 0x2A000000 - 0x2BFFFFFF
++#endif
++
++#define HICR9_UART1_RST_SRC_LPC		0x00000010
++#define HICR9_UART2_RST_SRC_LPC		0x00000020
++
++/*wiw Luke 20151130 add to init board*/
++#define GPIOABCD_BASE	0x00 
++#define GPIOABCD_ExtendBASE 0x1C 
++#define GPIOEFGH_BASE	0x20
++#define GPIOEFGH_ExtendBASE 0x3C
++#define GPIOIJKL_BASE	0x70
++#define GPIOMNOP_BASE	0x78
++#define GPIOQRST_BASE	0x80
++#define GPIOUVWX_BASE	0x88
++#define GPIOYZAAAB_BASE	0x1E0
++#define GPIO_DAT	0x00
++#define GPIO_DIR	0x04
++#define SCU_BASE	0x1e6e2000
++#define SCU_PHYMODE_CONFIG 0x40
++#define SCU_HARDWARE_STRAP	0x70
++#define SCU_CONTROL1	0x80
++#define SCU_CONTROL2	0x84
++#define SCU_CONTROL3	0x88
++#define SCU_CONTROL4	0x8C
++#define SCU_CONTROL5	0x90
++#define SCU_CONTROL6	0x94
++#define SCU_CONTROL7	0xA0
++#define SCU_CONTROL8	0xA4
++#define SCU_CONTROL9	0xA8
++#define SCU_MISC	0x2C
++#define GPIO_BASE	0x1e780000
++
++#define BOARD_ID_EVT1 0x10000000
++#define BOARD_ID_EVT2 0x20000000
++#define BOARD_ID_DVT  0x30000000
++#define BOARD_ID_PVT  0x40000000
++#define BOARD_ID_MASK 0x70000000
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++
++void Olympus_GPIO_setting(void)
++{
++	ulong tmp;
++  ulong BoardId;
++  
++ 	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR);
++	tmp &= (~BOARD_ID_MASK);
++	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR), tmp);
++
++	BoardId = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT); 
++	//printf("Board ID:%03ld\n",((BoardId & BOARD_ID_MASK) >> 28));
++  BoardId &= BOARD_ID_MASK;
++ 
++ if(BoardId == BOARD_ID_EVT1){  
++  	/*
++  	 * A0,A1,A3,B0,D1,D3,D5 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOABCD_BASE+GPIO_DAT); 
++  	tmp = 0x2A00010B;
++  	writel((GPIO_BASE+GPIOABCD_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * A0,A1,A3,A6,A7,B0,B2,B3,B7,D1,D3,D5 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOABCD_BASE+GPIO_DIR);
++  	tmp = 0x2A008DCB;
++  	writel((GPIO_BASE+GPIOABCD_BASE+GPIO_DIR), tmp);
++     //Set GPIOA6 with Reset Tolerant Enable
++    tmp = readl(GPIO_BASE+GPIOABCD_ExtendBASE);
++    tmp= 0x00000040;
++    writel((GPIO_BASE+GPIOABCD_ExtendBASE), tmp);
++  
++  	/*
++  	 * E4,E5,E6,F5,F6 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOEFGH_BASE+GPIO_DAT);
++  	tmp = 0x6070;
++  	writel((GPIO_BASE+GPIOEFGH_BASE+GPIO_DAT), tmp);
++  
++  	/*
++  	 * E3,E4,E5,E6,E7,F5,F6,G0,G4 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOEFGH_BASE+GPIO_DIR);
++  	tmp = 0x1160F8;
++  	writel((GPIO_BASE+GPIOEFGH_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * J1,J2,L2,L5 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOIJKL_BASE+GPIO_DAT);
++  	tmp = 0x4000600;
++  	writel((GPIO_BASE+GPIOIJKL_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * J1,J2,L2,L3,L5 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOIJKL_BASE+GPIO_DIR);
++  	tmp = 0x2C000600;
++  	writel((GPIO_BASE+GPIOIJKL_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * M3 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT);
++  	tmp = 0x8;
++  	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * M3 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR);
++    tmp = 0x8;
++  	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR), tmp);
++  	
++  	/*
++  	 * Q4,Q5,R1,R5 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOQRST_BASE+GPIO_DAT);
++  	tmp = 0x2230;
++  	writel((GPIO_BASE+GPIOQRST_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * Q4,Q5,R1,R3,R5,S4 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOQRST_BASE+GPIO_DIR);
++  	tmp = 0x102A30;
++  	writel((GPIO_BASE+GPIOQRST_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * U3 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOUVWX_BASE+GPIO_DAT);
++  	tmp = 0x8;
++  	writel((GPIO_BASE+GPIOUVWX_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * U2,U3 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOUVWX_BASE+GPIO_DIR);
++  	tmp = 0xc;
++  	writel((GPIO_BASE+GPIOUVWX_BASE+GPIO_DIR), tmp);
++  	
++  	/*
++  	 * Y0,Y3 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DAT);
++  	tmp = 0x9;
++  	writel((GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * Y0,Y1,Y2,Y3 is Output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DIR);
++  	tmp = 0xF;
++  	writel((GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DIR), tmp);
++  
++  }else{//evt2 or other stages after evt2 
++    	/*
++  	 * A0,A1,B0,C1,C3 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOABCD_BASE+GPIO_DAT); 
++  	tmp = 0x000A0103;
++  	writel((GPIO_BASE+GPIOABCD_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * A0,A1,B0,B3,C0,C1,C3,D0 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOABCD_BASE+GPIO_DIR);
++  	tmp = 0x010B0903;
++  	writel((GPIO_BASE+GPIOABCD_BASE+GPIO_DIR), tmp);
++     //Set GPIOA6 with Reset Tolerant Enable
++    tmp = readl(GPIO_BASE+GPIOABCD_ExtendBASE);
++    tmp= 0x00000040;
++    writel((GPIO_BASE+GPIOABCD_ExtendBASE), tmp);
++  
++  	/*
++  	 * F5,F6 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOEFGH_BASE+GPIO_DAT);
++  	tmp = 0x6000;
++  	writel((GPIO_BASE+GPIOEFGH_BASE+GPIO_DAT), tmp);
++  
++  	/*
++  	 * F5,F6,G0 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOEFGH_BASE+GPIO_DIR);
++  	tmp = 0x16000;
++  	writel((GPIO_BASE+GPIOEFGH_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * J1,J2,J3,L2 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOIJKL_BASE+GPIO_DAT);
++  	tmp = 0x04000E00;
++  	writel((GPIO_BASE+GPIOIJKL_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * J1,J2,J3,L2 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOIJKL_BASE+GPIO_DIR);
++  	tmp = 0x04000E00;
++  	writel((GPIO_BASE+GPIOIJKL_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * M0,M1,N5 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT);
++  	tmp = 0x2003;
++  	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * N5,M0,M1,M7 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR);
++    tmp = 0x2083;
++  	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR), tmp);
++  	
++  	/*
++  	 * Q4,Q5,R0 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOQRST_BASE+GPIO_DAT);
++  	tmp = 0x130;
++  	writel((GPIO_BASE+GPIOQRST_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * Q4,Q5,R0,R2,S4 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOQRST_BASE+GPIO_DIR);
++  	tmp = 0x100530;
++  	writel((GPIO_BASE+GPIOQRST_BASE+GPIO_DIR), tmp);
++  
++  	/*
++  	 * no pin is high
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOUVWX_BASE+GPIO_DAT);
++  	tmp = 0x00000000;
++  	writel((GPIO_BASE+GPIOUVWX_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * U2,U3 is output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOUVWX_BASE+GPIO_DIR);
++  	tmp = 0x0000000C;
++  	writel((GPIO_BASE+GPIOUVWX_BASE+GPIO_DIR), tmp);
++  	
++  	/*
++  	 * Y0,Y1,Y3 is High
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DAT);
++  	tmp = 0xB;
++  	writel((GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DAT), tmp);
++  	/*
++  	 * Y0,Y1,Y2,Y3 is Output
++  	 */
++  	tmp = readl(GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DIR);
++  	tmp = 0xF;
++  	writel((GPIO_BASE+GPIOYZAAAB_BASE+GPIO_DIR), tmp);  
++  }
++}
++
++
++
++void Olympus_SCU_setting(void)
++{	
++	ulong tmp;
++  ulong BoardId;
++  
++ 	tmp = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR);
++	tmp &= (~BOARD_ID_MASK);
++	writel((GPIO_BASE+GPIOMNOP_BASE+GPIO_DIR), tmp);
++
++	BoardId = readl(GPIO_BASE+GPIOMNOP_BASE+GPIO_DAT); 
++	//printf("Board ID:%03ld\n",((BoardId & BOARD_ID_MASK) >> 28));
++  BoardId &= BOARD_ID_MASK;
++
++	/* unlock SCU */
++	writel(0x1e6e2000, 0x1688A8A8);
++	  
++  if(BoardId == BOARD_ID_EVT1){
++    writel((SCU_BASE + SCU_CONTROL1), 0x00001000);
++	  writel((SCU_BASE + SCU_CONTROL2), 0xC0C00000);  
++  	writel((SCU_BASE + SCU_CONTROL3), 0xC1000003); //bit 24 is enable ROMCS1
++  	
++  	tmp = readl((SCU_BASE + SCU_CONTROL4));
++  	tmp|=0xCF;
++  	tmp&=0xFFFF00CF;
++  	writel((SCU_BASE + SCU_CONTROL4), tmp);
++  	 
++    tmp = readl((SCU_BASE + SCU_CONTROL5)); 
++    tmp|=0x07FF0000;
++  	tmp&=0x67FFFF0A;
++    writel((SCU_BASE + SCU_CONTROL5), tmp);
++      
++  	tmp = readl((SCU_BASE + SCU_CONTROL6));
++  	tmp&=0xFFFFFFFC;
++  	writel((SCU_BASE + SCU_CONTROL6), tmp);
++  	
++  	writel((SCU_BASE + SCU_CONTROL7), 0xCB2);
++      
++    tmp = readl((SCU_BASE + SCU_CONTROL8));
++    tmp|=0xFFFF0000;
++    tmp&=0xFFFF00FF;
++    writel((SCU_BASE + SCU_CONTROL8), tmp);
++  
++  	tmp = readl((SCU_BASE + SCU_CONTROL9));
++  	tmp|=0xF;
++  	writel((SCU_BASE + SCU_CONTROL9), tmp);
++	
++  }else{   //evt2 or other stages after evt2 
++  /*  tmp = readl(SCU_BASE + SCU_PHYMODE_CONFIG);   //enable NCSI for MAC2,default is disable
++    tmp |= 0x00001000;
++    writel((SCU_BASE + SCU_PHYMODE_CONFIG), tmp);
++  *///Disable NCSI that based on WCS
++    tmp = readl(SCU_BASE + SCU_HARDWARE_STRAP);   //enable RGMII for MAC1,default is disable
++    tmp |= 0x00000040;
++    writel((SCU_BASE + SCU_HARDWARE_STRAP), tmp);
++  
++    writel((SCU_BASE + SCU_CONTROL1), 0x00001000);
++    writel((SCU_BASE + SCU_CONTROL2), 0xC0C0F000);
++  	writel((SCU_BASE + SCU_CONTROL3), 0xC1000003); //bit 24 is enable ROMCS1
++  	
++  	tmp = readl((SCU_BASE + SCU_CONTROL4));
++  	tmp|=0xCF;
++  	tmp&=0xFFFF00CF;
++  	writel((SCU_BASE + SCU_CONTROL4), tmp);
++  	
++    tmp = readl((SCU_BASE + SCU_CONTROL5)); 
++    tmp|=0x007F0000;
++    tmp&=0x607FFF0A;
++    writel((SCU_BASE + SCU_CONTROL5), tmp);
++  
++  	tmp = readl((SCU_BASE + SCU_CONTROL6));
++  	tmp&=0xFFFFFFFC;
++  	writel((SCU_BASE + SCU_CONTROL6), tmp);
++  	
++    writel((SCU_BASE + SCU_CONTROL7), 0xC80);
++      
++    tmp = readl((SCU_BASE + SCU_CONTROL8));
++    tmp|=0xFFFF00FF;
++    tmp&=0xFFFF00FF;
++    writel((SCU_BASE + SCU_CONTROL8), tmp);  
++    
++  	tmp = readl((SCU_BASE + SCU_CONTROL9));
++  	tmp|=0xF;
++  	writel((SCU_BASE + SCU_CONTROL9), tmp);  
++  }       
++
++	writel((SCU_BASE + SCU_MISC), 0x0);
++   	writel(0x1e6e2000, 0);/*lock SCU*/
++   	writel(0x1e789098, 0x0); //disable UART2 and UART1 reset source from LPC
++
++	tmp = readl(0x1e78502c);  //Set WDT2C Timer clock to 1MHz
++   	tmp|=0x10;
++   //	writel((0x1e78502c), tmp);--------- This line caused 2016 u-boot stack.
++}
++
++
+ int board_init(void)
+ {
+ 	/* adress of boot parameters */
+ 	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x100;
+ 	gd->flags = 0;
++
++    icache_enable ();
++    Olympus_SCU_setting();
++    Olympus_GPIO_setting();
+ 	return 0;
+ }
+ 
+@@ -55,6 +431,7 @@
+ 	return 0;
+ }
+ 
++
+ int dram_init(void)
+ {
+ 	u32 vga = ast_scu_get_vga_memsize();
+@@ -77,3 +454,89 @@
+ 	return aspeednic_initialize(bd);
+ }
+ #endif
++
++
++//extern void soc_init(void);
++
++#if 0
++int board_init (void)
++{
++	/*Should match with linux mach type for this board */
++	gd->bd->bi_arch_number = 900;
++	
++	/* Should match with linux Makefile.boot entry for params-phys-y */
++	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x0000100;
++	
++	gd->flags = 0;
++
++	icache_enable ();
++	Olympus_SCU_setting();
++	Olympus_GPIO_setting();
++	return 0;
++}
++
++
++int misc_init_r (void)
++{
++	ulong reg;	
++#ifdef CONFIG_HDMI_SUPPORT			/* AST 3100 & AST3200? */
++	/* Enable HDMI Recevier if required */
++	extern int hdmi_init(void); 
++	hdmi_init();
++#endif	
++	
++#ifdef CONFIG_AST3100EVB
++	
++	*((volatile ulong*) 0x1e6e2000) = 0x1688A8A8;	/* unlock SCU */
++	
++	/* Set OSC output to 12 MHz for Codec */
++	*(volatile u32 *)(0x1e6e2010) |= 0x00000030;
++	mdelay(1);									/* Wait for SCU14 becomes 0 */
++	*(volatile u32 *)(0x1e6e2010) |= 0x00000039;	
++	mdelay(1);									/* Delay 1ms*/
++	*(volatile u32 *)(0x1e6e2010) |= 0x0000003b;	
++	mdelay(1);									/* Wait for SCU10[6]=1 */
++
++//	printf("OSC Multiplier = 0x%x\n", *(volatile u32 *)(0x1e6e2014));
++
++	/* Set Mux to output the OSC clock */ 	
++	*(volatile u32 *)(0x1e6e202c) |= 0x00080012;	
++
++	/* Enable USB1.1 Host Port 2 function */
++	*(volatile u32 *)(0x1e6e2090) |= 0x00000008;	/* Set Bit 3 */
++	
++	/* Drive GPIO pins for LED, Power On, USB HUB Reset */
++     *(volatile u32 *)(0x1e780004) |= 0x0000000e;	
++     *(volatile u32 *)(0x1e780000) |= 0x0000000f;
++	
++	*((volatile ulong*) SCU_KEY_CONTROL_REG) = 0; /* lock SCU */
++	
++#endif	
++
++
++	
++	
++	//set HICR9[4:5]=0
++	reg = *((volatile ulong*) (AST_LPC_VA_BASE+0x98) );
++	reg &= ~( HICR9_UART1_RST_SRC_LPC | HICR9_UART2_RST_SRC_LPC );
++	*((volatile ulong*) (AST_LPC_VA_BASE+0x98) ) = reg;
++
++	setenv("verify", "n");
++	return (0);
++}
++
++int dram_init (void)
++{
++	bd_t *bd = gd->bd;
++
++	/* dram_init must store complete ramsize in gd->ram_size */
++	gd->ram_size=CONFIG_SYS_SDRAM_SYS_USED;
++	
++	/* Only one Bank*/
++	bd->bi_dram[0].start = CONFIG_SYS_SDRAM_BASE;
++	bd->bi_dram[0].size = CONFIG_SYS_SDRAM_SYS_USED;
++
++	return (0);
++}
++#endif
++

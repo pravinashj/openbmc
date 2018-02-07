@@ -1,0 +1,12 @@
+diff -Naur git-orig/arch/arm/mach-aspeed/Makefile git/arch/arm/mach-aspeed/Makefile
+--- git-orig/arch/arm/mach-aspeed/Makefile	2018-01-31 15:34:56.341009852 +0000
++++ git/arch/arm/mach-aspeed/Makefile	2018-01-31 16:01:45.216963437 +0000
+@@ -11,7 +11,7 @@
+ #
+ 
+ 
+-obj-y += timer.o reset.o cpuinfo.o ast-scu.o ast-ahbc.o ast-sdmc.o ast_eth.o
++obj-y += timer.o reset.o cpuinfo.o ast-scu.o ast-ahbc.o ast-sdmc.o ast_eth.o ast_i2c.o
+ obj-$(CONFIG_AST_SPI_NOR) += flash.o
+ obj-$(CONFIG_ARCH_AST2500) += platform_g5.o
+ obj-$(CONFIG_ARCH_AST2400) += platform_g4.o
