@@ -1,2 +1,6 @@
-
-FILESEXTRAPATHS_append := "${THISDIR}/files:"
+FILESEXTRAPATHS_append := "${THISDIR}/:"
+SRC_URI += "file://0015-arch_arm_include_asm_bootm.h.patch"
+SRC_URI += "file://0016-arch_arm_include_asm_setup.h.patch"
+SRC_URI += "file://0017-arch_arm_lib_bootm.c.patch"
+SRC_URI += "file://0018-arch_arm_lib_interrupts.c.patch"
+SRC_URI += "file://0019-inlclude_asm-generic_u-boot.h.patch"

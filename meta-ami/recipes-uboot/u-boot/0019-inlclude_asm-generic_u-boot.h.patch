@@ -1,0 +1,15 @@
+--- git-orig/include/asm-generic/u-boot.h	2018-01-31 09:48:11.329610058 +0000
++++ git/include/asm-generic/u-boot.h	2018-02-06 09:44:32.110660988 +0000
+@@ -104,6 +104,12 @@
+ #ifdef CONFIG_HAS_ETH5
+ 	unsigned char   bi_enet5addr[6];	/* OLD: see README.enetaddr */
+ #endif
++#ifdef CONFIG_VIRTUAL_ETH
++        unsigned char   bi_vnetaddr[6]; /* OLD: see README.enetaddr */
++        unsigned char   bi_vnet1addr[6];        /* OLD: see README.enetaddr */
++        unsigned char   bi_vnet2addr[6];        /* OLD: see README.enetaddr */
++        unsigned char   bi_vnet3addr[6];        /* OLD: see README.enetaddr */
++#endif
+ 
+ #if defined(CONFIG_405GP) || defined(CONFIG_405EP) || \
+ 		defined(CONFIG_405EZ) || defined(CONFIG_440GX) || \
