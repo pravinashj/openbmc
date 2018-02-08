@@ -1,0 +1,36 @@
+--- git/board/aspeed/ast-g4/ast-g4.c	2018-02-08 15:46:48.836853858 -0500
++++ git-org/board/aspeed/ast-g4/ast-g4.c	2018-02-08 15:47:57.260802997 -0500
+@@ -271,6 +271,25 @@
+ 	return 0;
+ }
+ 
++void ChassisPowerOn()
++{
++        u32 reg;
++        reg = readl(GPIO_BASE + GPIO_DIR); //GPIOD3
++        reg |= 0x08000000;
++        writel(reg,GPIO_BASE + GPIO_DIR);
++
++        reg = readl(GPIO_BASE + GPIO_DAT);
++        reg &= 0xF7FFFFFF;
++        writel(reg,GPIO_BASE + GPIO_DAT); //Low
++
++        udelay(2000000);
++
++        reg = readl(GPIO_BASE + GPIO_DAT);
++        reg |= 0x08000000;
++        writel(reg,GPIO_BASE + GPIO_DAT); //High
++
++}
++
+ int misc_init_r(void)
+ {
+ 	u32 reg;
+@@ -298,6 +317,7 @@
+ 	reg |= 0x61800000;
+ 	writel(reg, AST_SCU_BASE + AST_SCU_CLK_SEL);
+ 
++	ChassisPowerOn();
+ 	return 0;
+ }
+ 
