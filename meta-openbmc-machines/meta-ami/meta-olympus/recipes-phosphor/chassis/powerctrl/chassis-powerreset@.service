@@ -1,0 +1,13 @@
+[Unit]
+Description="Chassis Power Reset Host"
+Conflicts=obmc-chassis-poweroff@0.target
+
+[Service]
+ExecStart=/usr/bin/env /usr/sbin/powerreset.sh
+SyslogIdentifier=powerreset.sh
+Type=oneshot
+RemainAfterExit=no
+
+[Install]
+RequiredBy=obmc-chassis-powerreset@0.target
+

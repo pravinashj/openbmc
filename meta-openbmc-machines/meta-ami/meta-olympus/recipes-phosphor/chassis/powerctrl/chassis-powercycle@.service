@@ -1,0 +1,11 @@
+[Unit]
+Description=Chassis Power Cycle Host
+
+[Service]
+RemainAfterExit=no
+Type=oneshot
+ExecStart=/usr/bin/env /usr/sbin/powercycle.sh
+SyslogIdentifier=powercycle.sh
+
+[Install]
+RequiredBy=obmc-chassis-powercycle@0.target

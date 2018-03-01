@@ -1,0 +1,12 @@
+[Unit]
+Description=Chassis Power Off Host
+Conflicts=obmc-chassis-power-on@0.target
+
+[Service]
+RemainAfterExit=no
+Type=oneshot
+ExecStart=/usr/bin/env /usr/sbin/poweroff.sh
+SyslogIdentifier=poweroff.sh
+
+[Install]
+RequiredBy=obmc-chassis-power-off@0.target
