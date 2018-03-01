@@ -20,7 +20,7 @@ CHASSIS_SYNCH_TARGETS = "start-pre start on stop-pre stop off reset-on"
 # - off: Services to run to power off the chassis
 # - reset: Services to check chassis power state and update chassis "on" target
 # - hard-off: Services to force an immediate power off of the chassis
-CHASSIS_ACTION_TARGETS = "poweron poweroff powerreset hard-poweroff"
+CHASSIS_ACTION_TARGETS = "poweron poweroff powerreset hard-poweroff powercycle"
 
 # Track all host synchronization point targets
 # - start-pre:                 Services to run before we start host boot
