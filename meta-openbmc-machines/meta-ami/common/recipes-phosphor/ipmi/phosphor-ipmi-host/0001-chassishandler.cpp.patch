@@ -1,0 +1,148 @@
+--- git_ori/chassishandler.cpp	2018-03-01 18:46:55.601569499 -0500
++++ git/chassishandler.cpp	2018-03-01 16:56:49.375386400 -0500
+@@ -20,6 +20,7 @@
+ #include <experimental/filesystem>
+ #include <string>
+ #include <map>
++#include <unistd.h>
+ 
+ #include <phosphor-logging/log.hpp>
+ #include <phosphor-logging/elog-errors.hpp>
+@@ -74,6 +75,9 @@
+ constexpr auto IP_INTERFACE = "xyz.openbmc_project.Network.IP";
+ constexpr auto MAC_INTERFACE = "xyz.openbmc_project.Network.MACAddress";
+ 
++constexpr auto SYSTEMD_SERVICE   = "org.freedesktop.systemd1";
++constexpr auto SYSTEMD_OBJ_PATH  = "/org/freedesktop/systemd1";
++constexpr auto SYSTEMD_INTERFACE = "org.freedesktop.systemd1.Manager";
+ 
+ typedef struct
+ {
+@@ -936,6 +940,60 @@
+     std::ofstream(path.c_str());
+ }
+ 
++void Chassis_PowerON()
++{
++    using namespace chassis::internal;
++    auto method = dbus.new_method_call(SYSTEMD_SERVICE,
++                                       SYSTEMD_OBJ_PATH,
++                                       SYSTEMD_INTERFACE,
++                                       "StartUnit");
++
++    method.append("obmc-chassis-poweron@0.target");
++    method.append("replace");
++    dbus.call_noreply(method);
++}
++
++void Chassis_PowerOFF()
++{
++    using namespace chassis::internal;
++    auto method = dbus.new_method_call(SYSTEMD_SERVICE,
++                                       SYSTEMD_OBJ_PATH,
++                                       SYSTEMD_INTERFACE,
++                                       "StartUnit");
++
++    method.append("obmc-chassis-poweroff@0.target");
++    method.append("replace");
++    dbus.call_noreply(method);
++
++}
++
++void Chassis_PowerCycle()
++{
++    using namespace chassis::internal;
++    auto method = dbus.new_method_call(SYSTEMD_SERVICE,
++                                       SYSTEMD_OBJ_PATH,
++                                       SYSTEMD_INTERFACE,
++                                       "StartUnit");
++
++    method.append("obmc-chassis-powercycle@0.target");
++    method.append("replace");
++    dbus.call_noreply(method);
++
++}
++
++void Chassis_PowerReset()
++{
++    using namespace chassis::internal;
++    auto method = dbus.new_method_call(SYSTEMD_SERVICE,
++                                       SYSTEMD_OBJ_PATH,
++                                       SYSTEMD_INTERFACE,
++                                       "StartUnit");
++
++    method.append("obmc-chassis-powerreset@0.target");
++    method.append("replace");
++    dbus.call_noreply(method);
++	
++}
+ //----------------------------------------------------------------------
+ // Chassis Control commands
+ //----------------------------------------------------------------------
+@@ -958,7 +1016,8 @@
+     switch(chassis_ctrl_cmd)
+     {
+         case CMD_POWER_ON:
+-            rc = initiate_state_transition(State::Host::Transition::On);
++            //rc = initiate_state_transition(State::Host::Transition::On);
++		Chassis_PowerON();
+             break;
+         case CMD_POWER_OFF:
+             // This path would be hit in 2 conditions.
+@@ -973,29 +1032,32 @@
+ 
+             // For now, we are going ahead with trying to nudge the soft off and
+             // interpret the failure to do so as a non softoff case
+-            rc = stop_soft_off_timer();
++            //rc = stop_soft_off_timer();
+ 
+             // Only request the Off transition if the soft power off
+             // application is not running
+-            if (rc < 0)
+-            {
++            //if (rc < 0)
++            //{
+                 // First create a file to indicate to the soft off application
+                 // that it should not run. Not doing this will result in State
+                 // manager doing a default soft power off when asked for power
+                 // off.
+-                indicate_no_softoff_needed();
++              //  indicate_no_softoff_needed();
+ 
+                 // Now request the shutdown
+-                rc = initiate_state_transition(State::Host::Transition::Off);
+-            }
+-            else
+-            {
+-                log<level::INFO>("Soft off is running, so let shutdown target "
+-                                 "stop the host");
+-            }
++                //rc = initiate_state_transition(State::Host::Transition::Off);
++            //}
++            //else
++            //{
++              //  log<level::INFO>("Soft off is running, so let shutdown target "
++              //                   "stop the host");
++            //}
++		Chassis_PowerOFF();
+             break;
+ 
+         case CMD_HARD_RESET:
++		Chassis_PowerReset();
++		break;
+         case CMD_POWER_CYCLE:
+             // SPEC has a section that says certain implementations can trigger
+             // PowerOn if power is Off when a command to power cycle is
+@@ -1005,9 +1067,10 @@
+             // that it should not run since this is a direct user initiated
+             // power reboot request (i.e. a reboot request that is not
+             // originating via a soft power off SMS request)
+-            indicate_no_softoff_needed();
++            //indicate_no_softoff_needed();
+ 
+-            rc = initiate_state_transition(State::Host::Transition::Reboot);
++            //rc = initiate_state_transition(State::Host::Transition::Reboot);
++		Chassis_PowerCycle();
+             break;
+ 
+         case CMD_SOFT_OFF_VIA_OVER_TEMP:
