@@ -1,0 +1,978 @@
+From 253a38a4e7c798469d775085840a663b52ada6af Mon Sep 17 00:00:00 2001
+From: pranoygoru <gorumanip@amiindia.co.in>
+Date: Tue, 6 Mar 2018 17:41:16 +0530
+Subject: [PATCH 2/2] MasterWriteRead_Implementation
+
+---
+ Makefile.am    |   1 +
+ apphandler.cpp | 169 +++++++++++++++++-
+ apphandler.h   |   1 +
+ coreTypes.h    | 118 +++++++++++++
+ i2c_helper.cpp | 535 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ i2c_helper.h   |  65 +++++++
+ 6 files changed, 888 insertions(+), 1 deletion(-)
+ create mode 100644 coreTypes.h
+ create mode 100644 i2c_helper.cpp
+ create mode 100644 i2c_helper.h
+
+diff --git a/Makefile.am b/Makefile.am
+index 2c78f79..8ebdb18 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -50,6 +50,7 @@ libapphandlerdir = ${libdir}/ipmid-providers
+ libapphandler_LTLIBRARIES = libapphandler.la
+ libapphandler_la_SOURCES = \
+ 	apphandler.cpp \
++	i2c_helper.cpp \
+ 	sensorhandler.cpp \
+ 	storagehandler.cpp \
+ 	chassishandler.cpp \
+diff --git a/apphandler.cpp b/apphandler.cpp
+index 8340922..91be80e 100644
+--- a/apphandler.cpp
++++ b/apphandler.cpp
+@@ -18,6 +18,10 @@
+ #include <phosphor-logging/elog-errors.hpp>
+ #include "xyz/openbmc_project/Common/error.hpp"
+ 
++#include "i2c_helper.h"
++#include <stdlib.h>
++#include <iostream>
++
+ extern sd_bus *bus;
+ 
+ constexpr auto app_obj = "/org/openbmc/NetworkManager/Interface";
+@@ -116,6 +120,164 @@ int convert_version(const char *p, rev_t *rev)
+     return 0;
+ }
+ 
++
++/* MasterWriteReadReq_T */
++typedef struct
++{
++    INT8U   BusTypeChNo;
++    INT8U   SlaveAddress;
++    INT8U   ReadCount;
++    INT8U   Data[MAX_I2C_BUFFER_SIZE];
++
++}__attribute__((packed))  MasterWriteReadReq_T;
++
++/* MasterWriteReadRes_T */
++typedef struct
++{
++    INT8U   CompletionCode;
++    INT8U   data[MAX_I2C_BUFFER_SIZE];
++
++}__attribute__((packed)) MasterWriteReadRes_T;
++
++
++ipmi_ret_t ipmi_MasterWriteRead (ipmi_netfn_t netfn, ipmi_cmd_t cmd,
++                             ipmi_request_t request, ipmi_response_t response,
++                             ipmi_data_len_t data_len, ipmi_context_t context)
++{
++    ipmi_ret_t rc = IPMI_CC_OK;
++    MasterWriteReadReq_T* pMasterWriteReadReq = (MasterWriteReadReq_T*)request;
++    MasterWriteReadRes_T MasterWriteReadRes;
++    *data_len = sizeof(pMasterWriteReadReq);
++
++    INT8U* OutBuffer;
++    INT8U* InBuffer;
++    INT8U  SlaveAddr, ReadCount, WriteCount;
++    INT8   BusName[64];
++    int retval = 0;
++    INT8U OrgReadCount;
++    INT8U I2CBusId=0,ErrCode = 0;
++    if(pMasterWriteReadReq->SlaveAddress & BIT0)
++    {
++        rc  = CC_INV_DATA_FIELD;
++        goto finish;
++    }
++	 
++    I2CBusId      = pMasterWriteReadReq->BusTypeChNo;
++    ReadCount     = pMasterWriteReadReq->ReadCount;
++    SlaveAddr     = (pMasterWriteReadReq->SlaveAddress);
++	
++    if (*data_len < 3)
++    {
++        rc = CC_REQ_INV_LEN;
++        goto finish;
++    }
++
++
++    /* number of bytes to write
++    * = pMasterWriteReadReq length - 3 for  Request Data byte -
++    * BusTypeChNo,SlaveAddr,Readcount + 1 byte for address
++    */
++    WriteCount = *data_len - 3;
++
++    OutBuffer = (pMasterWriteReadReq->Data);
++    InBuffer = MasterWriteReadRes.data;
++    sprintf(BusName,"/dev/i2c-%d",I2CBusId);
++
++    // Save original ReadCount in case we need to modify it
++    OrgReadCount = ReadCount;
++
++    // If both ReadCount and WriteCount are zero, then force a read of 1 byte.
++    // If we do not do this, the write command will fail.
++    // Having both counts 0 is a way of "pinging" the given device to see if it
++    // is responding to its address.
++    
++    if (ReadCount == 0 && WriteCount == 0)
++    {
++	// can't be TBD
++        ReadCount = 1;
++    }
++	
++    if (ReadCount > 0 && WriteCount == 0) 
++    {
++            retval = i2c_master_read(BusName, SlaveAddr, InBuffer,ReadCount);
++            if (retval < 0)
++            {
++                ErrCode = (retval & MASTER_RW_ERRCODE);
++                if((ErrCode == CC_NO_ACK_FROM_SLAVE) || (ErrCode == CC_BUS_ERROR) || (ErrCode == CC_ARBITRATION_LOST) || (ErrCode == CC_TRUNCATED_READ))
++                {
++                    MasterWriteReadRes.CompletionCode = ErrCode;
++                }
++                else
++                {
++                    MasterWriteReadRes.CompletionCode = CC_UNSPECIFIED_ERR;
++                }
++		  rc = MasterWriteReadRes.CompletionCode;
++		  goto finish;
++            }
++
++        ReadCount = OrgReadCount;
++
++        /* copy the bytes read  to Response Data */
++        memcpy (MasterWriteReadRes.data, InBuffer, ReadCount);
++    }
++
++    else if(ReadCount > 0 && WriteCount > 0 )
++    {
++            retval = i2c_writeread(BusName, SlaveAddr, OutBuffer, InBuffer, WriteCount, ReadCount);
++            if (retval < 0)
++            {
++                ErrCode = (retval & MASTER_RW_ERRCODE);
++                if((ErrCode == CC_NO_ACK_FROM_SLAVE) || (ErrCode == CC_BUS_ERROR) || (ErrCode == CC_ARBITRATION_LOST) || (ErrCode == CC_TRUNCATED_READ))
++                {
++                    MasterWriteReadRes.CompletionCode = ErrCode;
++                }
++                else
++                {
++                    MasterWriteReadRes.CompletionCode = CC_UNSPECIFIED_ERR;
++                }
++		  rc = MasterWriteReadRes.CompletionCode;
++		  goto finish;
++            }
++
++        ReadCount = OrgReadCount;
++        /* copy the bytes read  to Response Data */
++        memcpy (MasterWriteReadRes.data, InBuffer, ReadCount);
++    }
++    else
++    {
++        /* No data to read so use master write instead,
++         * otherwise some devices (EEPROM) that have not finished writing
++         * will fail on the read transaction and possibly corrupt data
++         */ 
++            retval= i2c_master_write(BusName, SlaveAddr, OutBuffer, WriteCount);
++            if(retval < 0)
++            {
++                ErrCode = (retval & MASTER_RW_ERRCODE);
++                if((ErrCode == CC_NO_ACK_FROM_SLAVE) || (ErrCode == CC_BUS_ERROR) || (ErrCode == CC_ARBITRATION_LOST) || (ErrCode == CC_TRUNCATED_READ))
++                {
++                    MasterWriteReadRes.CompletionCode = ErrCode;
++                }
++                else
++                {
++                    MasterWriteReadRes.CompletionCode = CC_UNSPECIFIED_ERR;
++                }
++		  rc = MasterWriteReadRes.CompletionCode;
++		  goto finish;
++            }
++    }
++
++    MasterWriteReadRes.CompletionCode = CC_NORMAL;
++
++	*data_len = ReadCount+1;
++
++    memcpy (response, &MasterWriteReadRes, *data_len);
++
++    return rc;
++finish:
++    return rc;
++
++}
++
+ ipmi_ret_t ipmi_app_get_device_id(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+                              ipmi_request_t request, ipmi_response_t response,
+                              ipmi_data_len_t data_len, ipmi_context_t context)
+@@ -855,6 +1017,12 @@ void register_netfn_app_functions()
+     ipmi_register_callback(NETFUN_APP, IPMI_CMD_SET_ACPI, NULL, ipmi_app_set_acpi_power_state,
+                            PRIVILEGE_ADMIN);
+ 
++
++    // <Set Master Write Read >
++    printf("Registering NetFn:[0x%X], Cmd:[0x%X]\n",NETFUN_APP, IPMI_CMD_MASTER_WRITE_READ);
++    ipmi_register_callback(NETFUN_APP, IPMI_CMD_MASTER_WRITE_READ, NULL, ipmi_MasterWriteRead,
++                           PRIVILEGE_ADMIN);
++
+     // <Set Channel Access>
+     printf("Registering NetFn:[0x%X], Cmd:[0x%X]\n",NETFUN_APP,
+                                             IPMI_CMD_SET_CHAN_ACCESS);
+@@ -874,4 +1042,3 @@ void register_netfn_app_functions()
+     return;
+ }
+ 
+-
+diff --git a/apphandler.h b/apphandler.h
+index 497b24b..acfb524 100644
+--- a/apphandler.h
++++ b/apphandler.h
+@@ -17,6 +17,7 @@ enum ipmi_netfn_app_cmds
+     IPMI_CMD_SET_CHAN_ACCESS        = 0x40,
+     IPMI_CMD_GET_CHANNEL_ACCESS     = 0x41,
+     IPMI_CMD_GET_CHAN_INFO          = 0x42,
++    IPMI_CMD_MASTER_WRITE_READ      = 0x52,
+ };
+ 
+ /** @struct GetChannelAccessRequest
+diff --git a/coreTypes.h b/coreTypes.h
+new file mode 100644
+index 0000000..a88b204
+--- /dev/null
++++ b/coreTypes.h
+@@ -0,0 +1,118 @@
++#ifndef CORE_TYPES_H
++#define CORE_TYPES_H
++
++#ifdef __KERNEL__
++#include <linux/types.h>
++#include <linux/version.h>
++#endif
++
++/*@-incondefs@*/
++/*@-likelybool@*/
++/*@-constuse@*/
++/*@-typeuse@*/
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#ifndef __cplusplus                         /* thus must be a .c program */
++/*@-cppnames@*/
++#ifdef __KERNEL__
++#if (LINUX_VERSION_CODE <=  KERNEL_VERSION(2,6,15))  //NOTE: bool is already defined in linux/types.h
++    typedef unsigned char bool;
++#endif
++#else
++    typedef unsigned char bool;
++#endif
++    #define false (bool)0
++    #define true  (bool)1
++    typedef int BOOL ;
++/*@=cppnames@*/
++#else
++    #ifndef _WIN32
++        #define BOOL bool
++    #endif
++#endif
++
++
++#ifndef FALSE
++    #define      FALSE   0
++    #define      TRUE    1
++#endif
++
++typedef   char int8;
++typedef   signed char    int8s;
++typedef          char    CHAR;
++typedef unsigned char  	 uint8;
++#ifndef __KERNEL__
++typedef unsigned char    u8;
++#endif
++typedef unsigned char    UINT8;
++typedef unsigned char    UCHAR;
++typedef unsigned char    BYTE;            
++
++
++typedef          short   int16;
++typedef          short   INT16;
++typedef unsigned short   uint16;
++#ifndef __KERNEL__
++typedef unsigned short   u16;             
++#endif
++typedef unsigned short   UINT16;
++typedef unsigned short   TWOBYTES;         
++typedef unsigned short   WORD;         
++
++
++
++typedef          int     int32;
++typedef unsigned int     uint32;
++#ifndef __KERNEL__
++typedef unsigned int     u32;             
++#endif
++typedef unsigned int   FOURBYTES;
++
++
++typedef unsigned long long   uint64;
++
++
++#if defined(_MSC_VER)                       /* automatically specified by VisualStudio compiler */
++    /* already defined by basetsd.h, so to avoid warnings, don't define here */
++#else
++    typedef          bool    BOOLEAN;
++    typedef          int    INT32;
++    typedef unsigned int    UINT32;
++#endif
++
++#ifdef _WIN32
++ #define ssize_t size_t
++#endif
++
++#ifdef _WIN32
++#include <windows.h>
++#else
++	typedef void *			HANDLE;
++	typedef void *			LPVOID;
++        typedef unsigned int        	DWORD;         
++#endif
++
++/*-------------------------------------------------------------------------
++ *
++ *  types internal to the core library
++ *
++ *-------------------------------------------------------------------------*/
++#define CORE_CHAR_TO_Core_Id(a,b,c,d) ( ((Core_Id)a<<24) | ((Core_Id)b<<16) | (c<<8) | d )
++typedef uint32 Core_Id;
++
++#ifdef __cplusplus
++}
++#endif
++
++/*@=incondefs@*/
++/*@=likelybool@*/
++/*@=constuse@*/
++/*@=typeuse@*/
++
++#if defined ( __linux__ )
++typedef int SOCKET;
++#endif
++
++#endif /* __CORE_TYPES_H__ */
+diff --git a/i2c_helper.cpp b/i2c_helper.cpp
+new file mode 100644
+index 0000000..076f72e
+--- /dev/null
++++ b/i2c_helper.cpp
+@@ -0,0 +1,535 @@
++#include <stdio.h>
++#include <iostream>
++#include <syslog.h>
++#include "i2c_helper.h"
++#include <stdlib.h>
++#include <errno.h>
++#include <unistd.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <sys/time.h>
++#include <sys/ioctl.h>
++#include <sys/file.h>
++#include <asm/errno.h>
++#include <linux/i2c.h>
++#include <linux/i2c-dev.h>
++#include <sys/sem.h>
++#include "coreTypes.h"
++
++static int obtain_i2c_access( int  );
++static ssize_t internal_master_read( int i2cfd, u8 slave, u8 *data,size_t count, bool do_wait );
++static int internal_writeread( u8 slave, u8 *write_data, u8 *read_data,size_t write_count, size_t read_count,int i2cdev, bool do_wait );
++static int internal_multimsg( i2c_message *messages, int msgcount,int i2cfd, bool do_wait );
++static int shared_file_lock( int i2cfd );
++int fcntl_lock_util( int fd, int cmd, short int type, off_t offset,short int whence, off_t len );
++int i2cbus_status( void );
++static int get_i2cbus_status( void );
++void select_sleep(time_t sec,suseconds_t usec);
++static int wait_for_readwrite( int i2cfd, int wait_time );
++static int surrender_i2c_access( int i2cfd );
++static int wait_for_read( int i2cfd, int wait_time );
++static ssize_t internal_master_write( int i2cfd, u8 slave, u8 *data,size_t count, bool do_wait );
++static int wait_for_write( /*@unused@*/int i2cfd, /*@unused@*/int wait_time );
++inline int file_lock_read( int fd )
++{
++    /* Lock the file from beginning to end, blocking if it is already locked */
++    return( fcntl_lock_util( fd, F_SETLKW, (short)F_RDLCK, (off_t)0,
++                             (short)SEEK_SET, (off_t)0 ) );
++}
++
++inline int file_unlock( int fd );
++
++ssize_t i2c_master_read( char *i2c_dev, u8 slave, u8 *data, size_t count )
++{
++    int i2cfd;
++    ssize_t retval;
++    int lock_ret;
++
++    std::cerr << "/* Open the device file */\n";
++    i2cfd = open( i2c_dev, O_RDWR );
++    if( i2cfd < 0 )
++    {
++	std::cerr << "unable to open\n" ;
++        return( HHM_FAILURE );
++    }
++
++    /* Make sure there is no health monitoring suspend during our access */
++    if( ( lock_ret = obtain_i2c_access( i2cfd ) ) < 0 )
++    {
++        std::cerr <<  "Cannot obtain shared lock on i2c device file\n" ;
++        (void)close( i2cfd );
++        return( (ssize_t)lock_ret );
++    }
++
++    retval = internal_master_read( i2cfd, slave, data, count, true );
++
++    /* Close the device file now that we're done */
++    (void)surrender_i2c_access( i2cfd );
++    (void)close( i2cfd );
++    return( retval );
++}
++
++ssize_t i2c_master_write( char *i2c_dev, u8 slave, u8 *data, size_t count )
++{
++    int i2cfd;
++    ssize_t retval;
++    int lock_ret;
++
++    /* Open the device file */
++    i2cfd = open( i2c_dev, O_RDWR );
++    if( i2cfd < 0 )
++        {
++                printf("Cannot open %s, %s\n",i2c_dev,strerror(errno));
++        return( HHM_FAILURE );
++        }
++
++    /* Make sure there is no health monitoring suspend during our access */
++    if( ( lock_ret = obtain_i2c_access( i2cfd ) ) < 0 )
++    {
++        syslog(LOG_WARNING, "Cannot obtain shared lock on i2c device file\n" );
++        (void)close( i2cfd );
++        return( (ssize_t)lock_ret );
++    }
++
++    /* Do the write with the newly opened FD */
++    retval = internal_master_write( i2cfd, slave, data, count, true );
++
++    /* Close the device file now that we're done */
++    (void)surrender_i2c_access( i2cfd );
++    (void)close( i2cfd );
++    return( retval );
++}
++
++int i2c_writeread( char *i2c_dev, u8 slave, u8 *write_data, u8 *read_data,
++                   size_t write_count, size_t read_count )
++{
++    int i2cfd;
++    ssize_t retval;
++    int lock_ret;
++
++    /* Open the device file */
++    i2cfd = open( i2c_dev, O_RDWR );
++    if( i2cfd < 0 )
++    {
++        return( HHM_INVAL );
++    }
++
++    /* Make sure there is no health monitoring suspend during our access\n */
++    if( ( lock_ret = obtain_i2c_access( i2cfd ) ) < 0 )
++    {
++        (void)close( i2cfd );
++        return( (ssize_t)lock_ret );
++    }
++
++    retval = internal_writeread( slave, write_data, read_data, write_count,
++                                 read_count, i2cfd, true );
++
++    /* Close the device file now that we're done */
++    (void)surrender_i2c_access( i2cfd );
++    (void)close( i2cfd );
++    return( retval );
++}
++
++static int obtain_i2c_access( int i2cfd )
++{
++    int count = 0;
++    int ret = -1;
++    int status = HEALTH_MON_INACTIVE;
++
++    for( count = 0; count < 200; count++ )
++    {
++        /* Get shared lock */
++        ret = shared_file_lock( i2cfd );
++        if( ret >= 0 )
++        {
++            /* Check if we are suspended */
++            status = i2cbus_status();
++            if( status == HEALTH_MON_INACTIVE )
++                (void)file_unlock( i2cfd );
++            else
++                break;
++        }
++
++        select_sleep(0,100);
++    }
++
++    if( ret < 0 )
++        return( ret );
++    else if( status == HEALTH_MON_ACTIVE )
++    {
++        return( 0 );
++    }
++    else
++        return( HHM_SUSPENDED );
++}
++
++static ssize_t internal_master_read( int i2cfd, u8 slave, u8 *data,
++                                     size_t count, bool do_wait )
++{
++    ssize_t ret = -1;
++
++    /* Check for bogus fd */
++    if( i2cfd < 0 )
++        return( HHM_FAILURE );
++
++    /* Just so there's something there in case things go bad */
++    data[ 0 ] = (u8)0xFF;
++
++    /* Set the remote slave from which we'll be reading */
++    if( ioctl( i2cfd, I2C_SLAVE, slave ) < 0 )
++    {
++        syslog(LOG_WARNING,"Cannot set remote slave device for master read\n" );
++        return( HHM_FAILURE );
++    }
++
++    if( do_wait )
++    {
++        /* Wait for the device to be accessible for read */
++        if( wait_for_read( i2cfd, READ_TIMEOUT ) < 0 )
++        {
++            syslog(LOG_WARNING, "Error waiting for bus to be readable\n" );
++            return( HHM_FAILURE );
++        }
++    }
++
++    /* Write the specified data onto the bus */
++    ret = read( i2cfd, data, count );
++    if( (size_t)ret != count )
++    {
++        errno = EREMOTEIO;
++    }
++
++    return( ret );
++}
++
++
++static int internal_writeread( u8 slave, u8 *write_data, u8 *read_data,
++                               size_t write_count, size_t read_count,
++                               int i2cdev, bool do_wait )
++{
++    i2c_message message[ 2 ];
++    int ret;
++
++    message[ 0 ].slave = slave;
++    message[ 0 ].operation = I2C_WRITE;
++    message[ 0 ].size = write_count;
++    message[ 0 ].data = write_data;
++
++    message[ 1 ].slave = slave;
++    message[ 1 ].operation = I2C_READ;
++    message[ 1 ].size = read_count;
++    message[ 1 ].data = read_data;
++
++    /* Splint doesn't understand that modifying message[ 1 ].data */
++    /* also modifies read_data.                                   */
++    /*@-mustdefine@*/
++    if( ( ret = internal_multimsg( message, 2, i2cdev, do_wait ) ) != 2 )
++    {
++        if( ret < 0 )
++            return( ret );
++        else
++            return( HHM_FAILURE );
++    }
++    else
++        return( 0 );
++    /*@=mustdefine@*/
++}
++
++static int internal_multimsg( i2c_message *messages, int msgcount,
++                              int i2cfd, bool do_wait )
++{
++    int i;
++    int ret = -1 ;
++    struct i2c_rdwr_ioctl_data ioctl_data;
++    struct i2c_msg ioctl_msgs[ MAX_CONSEC_MSGS ];
++
++    if( i2cfd < 0 )
++        return( HHM_FAILURE );
++
++    ioctl_data.nmsgs = msgcount;
++    ioctl_data.msgs = ioctl_msgs;
++
++    /* Prepare all the requested transactions */
++    for( i = 0; i < msgcount; i++ )
++    {
++        /*@-usedef@*/
++        ioctl_data.msgs[ i ].addr = (u16)messages[ i ].slave;
++        ioctl_data.msgs[ i ].len = (short int)messages[ i ].size;
++        ioctl_data.msgs[ i ].buf = (unsigned char *)messages[ i ].data;
++        if( messages[ i ].operation == I2C_READ )
++                ioctl_data.msgs[ i ].flags = I2C_M_RD;
++        else
++                ioctl_data.msgs[ i ].flags = 0;
++        /*@=usedef@*/
++    } /* for( i = 0; i < msgcount; i++ ) */
++
++    if( do_wait )
++    {
++        if( wait_for_readwrite( i2cfd, RDWR_TIMEOUT ) < 0 )
++        {
++            return( HHM_FAILURE );
++        }
++
++    }
++
++    /* Return value is negative on error, and equal to the */
++    /* number of messages transfered on success.           */
++    /*@-compdef@*/
++    ret = ioctl( i2cfd, I2C_RDWR, &ioctl_data );
++    /*@=compdef@*/
++
++    if(ret < 0) //Returning error code on failure case
++    {
++       return( ret );
++    }
++
++    if( ret != msgcount )
++    {
++        errno = EREMOTEIO;
++    }
++
++    return( ret );
++}
++
++static int shared_file_lock( int i2cfd )
++{
++    int ret;
++    char error_string[ 20 ];
++
++    ret = file_lock_read( i2cfd );
++    if( ret < 0 )
++    {
++        if( errno == EWOULDBLOCK )
++        {
++            syslog(LOG_WARNING,"libhhm: i2c device file already locked\n" );
++        }
++        else
++        {
++            strerror_r( errno, error_string, sizeof( error_string ) );
++            syslog(LOG_WARNING,"Error getting shared lock: %s", error_string );
++        }
++        return( HHM_FAILURE );
++    }
++
++    return( 0 );
++}
++
++inline int file_unlock( int fd )
++{
++    /* Unlock the file */
++    return( fcntl_lock_util( fd, F_SETLK, (short)F_UNLCK, (off_t)0,(short)SEEK_SET, (off_t)0 ) );
++}
++
++int fcntl_lock_util( int fd, int cmd, short int type, off_t offset,
++                            short int whence, off_t len )
++/*@globals errno@*/
++/*@modifies errno@*/
++{
++    struct flock lock;
++
++    lock.l_type = type;
++    lock.l_start = offset;
++    lock.l_whence = whence;
++    lock.l_len = len;
++    lock.l_pid = (pid_t)0;
++
++    return( fcntl( fd, cmd, &lock ) );
++}
++
++int i2cbus_status( void )
++{
++    return( get_i2cbus_status() );
++}
++
++static int get_i2cbus_status( void )
++{
++    int statusfd;
++    unsigned char status;
++
++    /* Create/open the file we use for maintaining health monitoring */
++    /* status across processes.                                      */
++    statusfd = open( I2C_SUSPEND_STATE, O_RDONLY );
++    if( statusfd < 0 )
++    {
++        //TDBG( "Cannot open " I2C_SUSPEND_STATE " - assuming active" );
++
++        return( HEALTH_MON_ACTIVE );
++    }
++
++    /* Obtain read access to the status file, in case somebody   */
++    /* else is trying to access it as well.                      */
++    if( file_lock_read( statusfd ) < 0 )
++    {
++        syslog(LOG_WARNING, "Cannot get shared access to \n" I2C_SUSPEND_STATE );
++        (void)close( statusfd );
++        return( -1 );
++    }
++
++    /* Read the new status from the file.                             */
++    if( read( statusfd, &status, sizeof( status ) ) < 0 )
++    {
++        syslog(LOG_WARNING,"Cannot read from i2c suspend status file\n" );
++
++        if( file_unlock( statusfd ) == -1 )
++            syslog(LOG_WARNING,"Cannot unlock i2c suspend status file\n" );
++        (void)close( statusfd );
++
++        return( -1 );
++    }
++
++
++    /* Unlock and close everything, we're done.  Closing the file      */
++    /* forcibly unlocks it even if file_unlock fails                   */
++    if( file_unlock( statusfd ) == -1 )
++        syslog(LOG_WARNING, "Cannot unlock i2c suspend status file\n" );
++
++    (void)close( statusfd );
++
++    return( (int)status );
++}
++
++void select_sleep(time_t sec,suseconds_t usec)
++{
++    struct timeval tv;
++
++    tv.tv_sec = sec;
++    tv.tv_usec = usec;
++
++    while(select(0, NULL, NULL, NULL, &tv) < 0 && errno == EINTR);
++}
++
++static int wait_for_readwrite( int i2cfd, int wait_time )
++{
++    fd_set rfds;
++    fd_set wfds;
++    struct timeval tv;
++    int select_ret;
++
++    FD_ZERO( &rfds );
++    FD_SET( i2cfd, &rfds );
++    FD_ZERO( &wfds );
++    FD_SET( i2cfd, &wfds );
++
++    tv.tv_sec = wait_time;
++    tv.tv_usec = 0;
++
++    /*** Make sure we use fdisset to check for both read and writeable ***/
++
++    /* Wait until we are able to read and write, or the timer runs out */
++    select_ret = select( i2cfd + 1, &rfds, &wfds, NULL, &tv );
++    if( select_ret < 0 )
++    {
++        return( HHM_FAILURE );
++    }
++    else if( select_ret == 0 )
++    {
++        errno = ETIMEDOUT;
++        return( HHM_FAILURE );
++    }
++
++    return( 0 );
++}
++
++
++static int surrender_i2c_access( int i2cfd )
++{
++    return( file_unlock( i2cfd ) );
++}
++
++static int wait_for_read( int i2cfd, int wait_time )
++{
++    fd_set rfds;
++    struct timeval tv;
++    int select_ret;
++
++    FD_ZERO( &rfds );
++    FD_SET( i2cfd, &rfds );
++
++    tv.tv_sec = wait_time;
++    tv.tv_usec = 0;
++
++    /* Wait until there is data ready to read, or the timer runs out */
++    select_ret = select( i2cfd + 1, &rfds, NULL, NULL, &tv );
++    if( select_ret < 0 )
++    {
++        return( HHM_FAILURE );
++    }
++    else if( select_ret == 0 )
++    {
++        errno = ETIMEDOUT;
++        return( HHM_FAILURE );
++    }
++
++    return( 0 );
++}
++
++static ssize_t internal_master_write( int i2cfd, u8 slave, u8 *data,
++                                      size_t count, bool do_wait )
++{
++    ssize_t ret = -1;
++
++    /* Check for bogus fd */
++    if( i2cfd < 0 )
++        return( HHM_FAILURE );
++
++    /* Set the remote slave to which we'll be writing */
++    if( ioctl( i2cfd, I2C_SLAVE, slave ) < 0 )
++    {
++        syslog(LOG_WARNING, "Cannot set remote slave device for master write\n" );
++        return( HHM_FAILURE );
++    }
++
++    if( do_wait )
++    {
++        /* Wait for the device to be accessible for write */
++        if( wait_for_write( i2cfd, WRITE_TIMEOUT ) < 0 )
++        {
++            syslog(LOG_WARNING, "Error waiting for bus to be writeable\n" );
++            return( HHM_FAILURE );
++        }
++    }
++
++    /* Write the specified data onto the bus */
++    ret = write( i2cfd, data, count );
++    if( (size_t)ret != count )
++    {
++        errno = EREMOTEIO;
++        /*@=unrecog@*/
++    }
++
++    return( ret );
++}
++
++static int wait_for_write( /*@unused@*/int i2cfd, /*@unused@*/int wait_time )
++{
++    /* This code disabled until it is demonstrably needed */
++    if(0)
++    {
++        i2cfd = i2cfd;    /* -Wextra; Fix for unused parameters */
++        wait_time = wait_time;
++    }
++#if 0
++    fd_set wfds;
++    struct timeval tv;
++    int select_ret;
++
++    FD_ZERO( &wfds );
++    FD_SET( i2cfd, &wfds );
++
++    tv.tv_sec = wait_time;
++    tv.tv_usec = 0;
++
++    /* Wait until we are able to write to the device, or the timer runs out */
++    select_ret = select( i2cfd + 1, NULL, &wfds, NULL, &tv );
++    if( select_ret < 0 )
++    {
++        return( HHM_FAILURE );
++    }
++    else if( select_ret == 0 )
++    {
++        errno = ETIMEDOUT;
++        return( HHM_FAILURE );
++    }
++#endif
++    return( 0 );
++}
+diff --git a/i2c_helper.h b/i2c_helper.h
+new file mode 100644
+index 0000000..fe82f3a
+--- /dev/null
++++ b/i2c_helper.h
+@@ -0,0 +1,65 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <errno.h>
++#include <unistd.h>
++
++#include <string.h>
++
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <sys/time.h>
++#include <sys/ioctl.h>
++#include <sys/file.h>
++#include <asm/errno.h>
++#include <linux/i2c.h>
++#include <linux/i2c-dev.h>
++#include <sys/sem.h>
++#include "coreTypes.h"
++
++#define HEALTH_MON_INACTIVE         ( 0 )
++#define HEALTH_MON_ACTIVE           ( 1 )
++#define HHM_FAILURE                 ( -1 )
++#define HHM_SUSPENDED               ( -2 )
++#define HHM_INVAL                   ( -3 )
++#define I2C_SUSPEND_STATE           "/var/state/i2c_suspend"
++#define SEEK_SET 0
++#define WRITE_TIMEOUT	    1
++#define READ_TIMEOUT	    1
++#define RDWR_TIMEOUT	    1
++#define I2C_WRITE        ( 0 )
++#define MAX_CONSEC_MSGS	    20
++#define  MAX_I2C_BUFFER_SIZE    50
++#define BIT0    0x0001
++#define CC_INV_DATA_FIELD   0xCC
++#define CC_REQ_INV_LEN      0xC7
++#define MASTER_RW_ERRCODE 0xFF
++#define CC_UNSPECIFIED_ERR   0xFF
++#define CC_NO_ACK_FROM_SLAVE  0x83
++#define CC_BUS_ERROR        0x82
++#define CC_ARBITRATION_LOST    0x81
++#define CC_TRUNCATED_READ    0x84
++#define CC_NORMAL           0x00
++//typedef unsigned char u8;
++//typedef unsigned short u16;
++typedef unsigned char	INT8U;
++typedef char INT8;
++
++#define I2C_READ                    ( 1 )
++typedef struct _i2c_message
++{
++    /** Slave address for this message */
++    u8 slave;
++
++    /** Valid options are I2C_WRITE and I2C_READ */
++    int operation;
++
++    /** The number of bytes to read or write */
++    size_t size;
++
++    /** Pointer to the data buffer (write or read) for this operation */
++    /*@temp@*/u8 *data;
++} i2c_message;
++
++extern ssize_t i2c_master_read( char *i2c_dev, u8 slave, u8 *data, size_t count );
++extern ssize_t i2c_master_write( char *i2c_dev, u8 slave, u8 *data, size_t count );
++extern int i2c_writeread( char *i2c_dev, u8 slave, u8 *write_data, u8 *read_data,size_t write_count, size_t read_count);
+-- 
+1.9.1
+
