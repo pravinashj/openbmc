@@ -1,0 +1,15 @@
+[Unit]
+Description=kcs daemon
+
+After=phosphor-ipmi-host.service
+[Service]
+Restart=always
+ExecStart=/usr/bin/kcsbridge
+SyslogIdentifier=kcsbridge
+Type=dbus
+BusName=org.openbmc.HostIpmikcs
+TimeoutSec=infinity
+
+[Install]
+WantedBy={SYSTEMD_DEFAULT_TARGET}
+

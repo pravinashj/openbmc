@@ -1,0 +1,26 @@
+From 2e29e989f457518b8b8a0c6910342be1c0818c6d Mon Sep 17 00:00:00 2001
+From: Manish <manishm@amiindia.co.in>
+Date: Wed, 7 Mar 2018 21:07:56 +0530
+Subject: [PATCH 3/3] Returned error code for get_self_test command
+
+---
+ apphandler.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/apphandler.cpp b/apphandler.cpp
+index 8340922..889721c 100644
+--- a/apphandler.cpp
++++ b/apphandler.cpp
+@@ -237,7 +237,8 @@ ipmi_ret_t ipmi_app_get_self_test_results(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+     selftestresults[1] = 0;
+ 
+     memcpy(response, selftestresults, *data_len);
+-
++	
++    rc = 0xc1; //Sending error code to aviod IPMI requests from BIOS
+     return rc;
+ }
+ 
+-- 
+2.7.4
+

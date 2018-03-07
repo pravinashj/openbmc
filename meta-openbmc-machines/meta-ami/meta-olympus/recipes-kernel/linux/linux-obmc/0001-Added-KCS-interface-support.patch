@@ -1,0 +1,1496 @@
+From eac345e349e8be6b36aeebafea19a7092ba5560d Mon Sep 17 00:00:00 2001
+From: OpenEmbedded <oe.patch@oe>
+Date: Wed, 7 Mar 2018 20:27:06 +0530
+Subject: [PATCH] Added KCS interface support
+
+---
+ arch/arm/boot/dts/aspeed-g4.dtsi |  33 ++
+ drivers/char/ipmi/Kconfig        |  10 +
+ drivers/char/ipmi/Makefile       |   1 +
+ drivers/char/ipmi/ipmikcs-bmc.c  | 958 +++++++++++++++++++++++++++++++++++++++
+ include/uapi/linux/ast-kcs.h     | 123 +++++
+ include/uapi/linux/regs-lpc.h    | 306 +++++++++++++
+ 6 files changed, 1431 insertions(+)
+ create mode 100644 drivers/char/ipmi/ipmikcs-bmc.c
+ create mode 100644 include/uapi/linux/ast-kcs.h
+ create mode 100644 include/uapi/linux/regs-lpc.h
+
+diff --git a/arch/arm/boot/dts/aspeed-g4.dtsi b/arch/arm/boot/dts/aspeed-g4.dtsi
+index 1525932..f587e8f 100644
+--- a/arch/arm/boot/dts/aspeed-g4.dtsi
++++ b/arch/arm/boot/dts/aspeed-g4.dtsi
+@@ -317,6 +317,39 @@
+ 				status = "disabled";
+ 			};
+ 
++                        kcs0: kcs0 {
++                                compatible= "aspeed,ast2400-kcs";
++                                reg = <0x1E789000 0x1000>;
++                                interrupts = <8>;
++                                kcs_chan = <0>;
++                                status = "okay";
++                        };
++                        kcs1: kcs1 {
++                                compatible= "aspeed,ast2400-kcs";
++                                reg = <0x1E789000 0x1000>;
++                                interrupts = <8>;
++                                kcs_chan = <1>;
++                                status = "okay";
++                        };
++
++
++                        kcs2: kcs2 {
++                                compatible= "aspeed,ast2400-kcs";
++                                reg = <0x1E789000 0x1000>;
++                                interrupts = <8>;
++                                kcs_chan = <2>;
++                                status = "okay";
++                        };
++
++                        kcs3: kcs3 {
++                                compatible= "aspeed,ast2400-kcs";
++                                reg = <0x1E789000 0x1000>;
++                                interrupts = <8>;
++                                kcs_chan = <3>;
++                                status = "okay";
++                        };
++
++
+ 			i2c: i2c@1e78a000 {
+ 				compatible = "simple-bus";
+ 				#address-cells = <1>;
+diff --git a/drivers/char/ipmi/Kconfig b/drivers/char/ipmi/Kconfig
+index 90f3edf..abf001a 100644
+--- a/drivers/char/ipmi/Kconfig
++++ b/drivers/char/ipmi/Kconfig
+@@ -85,3 +85,13 @@ config ASPEED_BT_IPMI_BMC
+ 	  Provides a driver for the BT (Block Transfer) IPMI interface
+ 	  found on Aspeed SOCs (AST2400 and AST2500). The driver
+ 	  implements the BMC side of the BT interface.
++
++config ASPEED_KCS_IPMI_BMC
++	depends on ARCH_ASPEED || COMPILE_TEST
++	depends on REGMAP && REGMAP_MMIO && MFD_SYSCON
++	tristate "KCS IPMI bmc driver"
++	help
++          Provides a driver for the KCS IPMI interface
++          found on Aspeed SOCs (AST2400 and AST2500). The driver
++          implements the BMC side of the KCS interface.
++
+diff --git a/drivers/char/ipmi/Makefile b/drivers/char/ipmi/Makefile
+index 0d98cd9..e0df982 100644
+--- a/drivers/char/ipmi/Makefile
++++ b/drivers/char/ipmi/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_IPMI_POWERNV) += ipmi_powernv.o
+ obj-$(CONFIG_IPMI_WATCHDOG) += ipmi_watchdog.o
+ obj-$(CONFIG_IPMI_POWEROFF) += ipmi_poweroff.o
+ obj-$(CONFIG_ASPEED_BT_IPMI_BMC) += bt-bmc.o
++obj-$(CONFIG_ASPEED_KCS_IPMI_BMC) += ipmikcs-bmc.o
+diff --git a/drivers/char/ipmi/ipmikcs-bmc.c b/drivers/char/ipmi/ipmikcs-bmc.c
+new file mode 100644
+index 0000000..8a8374f
+--- /dev/null
++++ b/drivers/char/ipmi/ipmikcs-bmc.c
+@@ -0,0 +1,958 @@
++/*
++ *Copyright (c) 2015-2016, IBM Corporation.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++ */
++
++#include <linux/atomic.h>
++#include <linux/regs-lpc.h>
++#include <linux/errno.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/mfd/syscon.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/poll.h>
++#include <linux/regmap.h>
++#include <linux/sched.h>
++#include <linux/timer.h>
++#include <linux/slab.h>
++#include <linux/fs.h>
++#include <linux/device.h>
++#include <linux/delay.h>
++#include <linux/ast-kcs.h>
++#define CONFIG_KCS_DEBUG 1
++#ifdef CONFIG_KCS_DEBUG
++#define KCS_DBG(fmt, args...) printk(KERN_DEBUG "%s() " fmt,__FUNCTION__, ## args)
++#else
++#define KCS_DBG(fmt, args...)
++#endif
++
++
++int irq = 0;
++struct ast_kcs_data ast_ipmi_kcs[4] = {0};
++
++static atomic_t open_count = ATOMIC_INIT(0);
++
++static const struct regmap_config bt_regmap_cfg = {
++        .reg_bits = 32,
++        .val_bits = 32,
++        .reg_stride = 4,
++};
++
++
++extern u32 StrToHex(char *p)
++{
++        int i, sum;
++        int temp, length;
++        char c;
++        sum = 0;
++        length = strlen(p);
++        for( i = 0; i < (length - 1) ; i++ )
++        {
++                c = *p;
++                if( c >= 'a' && c <= 'z') {
++                        temp = c - 87;
++                        sum += ((temp) << (4*(length - i - 2)));
++                } else if( c >= 'A' && c <= 'Z') {
++                        temp = c - 55;
++                        sum += ((temp) << (4*(length - i - 2)));
++                } else {
++                        temp = c - 48;
++                        sum = sum + ((temp) << (4*(length - i - 2)));
++                }
++                p = p + 1;
++        }
++        return sum;
++}
++EXPORT_SYMBOL(StrToHex);
++
++/****************************    KCS read and write  ************************************************/
++
++static inline u32
++ast_kcs_read( u32 reg)
++{
++#if 0
++        u32 val;
++        val = readl(ast_lpc->reg_base + reg);
++        LPC_DBUG("ast_lpc_read : reg = 0x%08x, val = 0x%08x\n", reg, val);
++        return val;
++#else
++        return readl(AST_KCS_REG_VA_BASE + reg);
++#endif
++}
++
++
++
++ast_kcs_write( u32 val, u32 reg)
++{
++//      LPC_DBUG("ast_lpc_write : reg = 0x%08x, val = 0x%08x\n", reg, val);
++        writel(val, AST_KCS_REG_VA_BASE + reg);
++}
++
++/************************  IPMI KCS  ****************************************************************/
++static inline unsigned char read_kcs_status(struct ast_kcs_data *ast_kcs)
++{
++        return readl(ast_kcs->str);
++}
++
++static inline unsigned char read_kcs_data(struct ast_kcs_data *ast_kcs)
++{
++        return readl(ast_kcs->idr);
++}
++
++static inline unsigned char read_kcs_cmd(struct ast_kcs_data *ast_kcs)
++{
++        return readl(ast_kcs->idr);
++}
++
++static inline void write_kcs_data(struct ast_kcs_data *ast_kcs, unsigned char data)
++{
++        writel(data, ast_kcs->odr);
++}
++
++static inline void write_kcs_status(struct ast_kcs_data *ast_kcs, unsigned char str)
++{
++        u32 sts = readl(ast_kcs->str) & (~0xC0);
++        writel( sts | str, ast_kcs->str);
++}
++
++
++u16 ast_get_ipmi_kcs_addr(u8 kcs_ch)
++{
++        u16 tmp = 0;
++        switch(kcs_ch) {
++                case 0:
++                        ast_kcs_write(ast_kcs_read(AST_LPC_HICR4) & ~LPC_HICS_LADR12AS, AST_LPC_HICR4);
++                        tmp = (ast_kcs_read(AST_LPC_LADR12H) << 8) | ast_kcs_read(AST_LPC_LADR12L);
++                        break;
++                case 1:
++                        ast_kcs_write(ast_kcs_read( AST_LPC_HICR4) | LPC_HICS_LADR12AS, AST_LPC_HICR4);
++                        tmp = (ast_kcs_read( AST_LPC_LADR12H) << 8) | ast_kcs_read( AST_LPC_LADR12L);
++                        break;
++                case 2:
++                        tmp = (ast_kcs_read(AST_LPC_LADR3H) << 8) | ast_kcs_read(AST_LPC_LADR3L);
++                        break;
++                case 3:
++                        tmp = ast_kcs_read(AST_LPC_LADR4) & 0xffff;
++                        break;
++                default:
++                        break;
++        }
++        return tmp;
++}
++EXPORT_SYMBOL(ast_get_ipmi_kcs_addr);
++
++
++void ast_set_ipmi_kcs_en(u8 kcs_ch, u8 enable)
++{
++        if(enable) {
++                switch(kcs_ch) {
++                        case 0: //kcs1
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR0) | LPC_LPC1_EN, AST_LPC_HICR0);
++                                break;
++                        case 1: //kcs2
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR0) | LPC_LPC2_EN, AST_LPC_HICR0);
++                                break;
++                        case 2: //kcs3  --> fix 0xca2 / 0xca3
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR0) | LPC_LPC3_EN, AST_LPC_HICR0);
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR4) | LPC_HICS_KCSENBL, AST_LPC_HICR4);
++                                break;
++                        case 3: //kcs4
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICRB) | LPC_KCS4_EN, AST_LPC_HICRB);
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICRB) | LPC_KCS4_RCV_INTR, AST_LPC_HICRB);
++                                break;
++                }
++        } else {
++                switch(kcs_ch) {
++                        case 0: //kcs 1
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR0) & ~LPC_LPC1_EN, AST_LPC_HICR0);
++                                ast_kcs_write(ast_kcs_read( AST_LPC_HICR2) & ~LPC_IBFIF1, AST_LPC_HICR2);
++                                break;
++                        case 1: //kcs 2
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR0) & ~LPC_LPC2_EN, AST_LPC_HICR0);
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR2) & ~LPC_IBFIF2, AST_LPC_HICR2);
++                                break;
++                        case 2: //kcs 3
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR4) & ~LPC_HICS_KCSENBL, AST_LPC_HICR4);
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICR2) & ~LPC_IBFIF2, AST_LPC_HICR2);
++                                break;
++                        case 3: //kcs 4
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICRB) & ~LPC_KCS4_RCV_INTR, AST_LPC_HICRB);
++                                ast_kcs_write(ast_kcs_read(AST_LPC_HICRB) & ~LPC_KCS4_EN, AST_LPC_HICRB);
++                                break;
++                }
++
++        }
++}
++EXPORT_SYMBOL(ast_set_ipmi_kcs_en);
++
++u8 ast_get_ipmi_kcs_en(u8 kcs_ch)
++{
++        u8 tmp = 0;
++        switch(kcs_ch) {
++                case 0:
++                        if(ast_kcs_read( AST_LPC_HICR0) & LPC_LPC1_EN)
++                                tmp = 1;
++                        else
++                                tmp = 0;
++                        break;
++                case 1:
++                        if(ast_kcs_read(AST_LPC_HICR0) & LPC_LPC2_EN)
++                                tmp = 1;
++                        else
++                                tmp = 0;
++                        break;
++                case 2: //kcs 3
++                        if((ast_kcs_read(AST_LPC_HICR0) & LPC_LPC3_EN) && (ast_kcs_read(AST_LPC_HICR4) & LPC_HICS_KCSENBL))
++                                tmp = 1;
++                        else
++                                tmp = 0;
++                        break;
++                case 3: //kcs4
++                        if(ast_kcs_read(AST_LPC_HICRB) & LPC_KCS4_EN)
++                                tmp = 1;
++                        else
++                                tmp = 0;
++                        break;
++                default:
++                        printk("Error Ch no !!\n");
++                        break;
++        }
++
++        return tmp;
++
++}
++EXPORT_SYMBOL(ast_get_ipmi_kcs_en);
++
++
++
++void ast_set_ipmi_kcs_addr( u8 kcs_ch, u16 kcs_addr)   //Done completely
++{
++        printk("set ch %d, addr %x \n", kcs_ch, kcs_addr);
++        switch(kcs_ch) {
++                case 0: //0xca0, 0xca4
++                        /* channel address select for channel 0  */
++                        ast_kcs_write(ast_kcs_read( AST_LPC_HICR4) & ~LPC_HICS_LADR12AS, AST_LPC_HICR4);
++                        ast_kcs_write(kcs_addr >> 8, AST_LPC_LADR12H);
++                        ast_kcs_write(kcs_addr & 0xff, AST_LPC_LADR12L);
++                        break;
++                case 1: //0xca2, 0xca6
++                        /* channel address select for channel 1  */
++                        ast_kcs_write(ast_kcs_read(AST_LPC_HICR4) | LPC_HICS_LADR12AS, AST_LPC_HICR4);
++                        ast_kcs_write( kcs_addr >> 8, AST_LPC_LADR12H);
++                        ast_kcs_write( kcs_addr & 0xff, AST_LPC_LADR12L);
++                        break;
++                case 2: //0xcb2, 0xcb3
++                        ast_kcs_write( kcs_addr >> 8,AST_LPC_LADR3H);
++                        ast_kcs_write( kcs_addr & 0xff, AST_LPC_LADR3L);
++                        break;
++                case 3: //0xcax~+4 +1
++                        ast_kcs_write( ((kcs_addr + 1) << 16) | kcs_addr, AST_LPC_LADR4);
++                        break;
++                case 4: //bt +1
++
++                        break;
++                default:
++                        break;
++        }
++}
++
++struct ast_kcs_data *register_ipmi_kcs_drv(u8 kcs_no)  
++{
++	printk("kcs : in register_ipmi_kcs_drv() for %d \n",kcs_no);	
++/*	if(ast_ipmi_kcs == NULL)
++	{	
++		ast_ipmi_kcs = kzalloc(sizeof(struct ast_kcs_data) * AST_KCS_NUM, GFP_KERNEL);
++		if(ast_ipmi_kcs == NULL){
++			printk("Memory allocation failed\n");
++			return NULL;
++		}
++		printk("Allocating data for kcs%d\n",kcs_no);
++	}*/
++        switch(kcs_no) {
++                case 0:
++                        ast_ipmi_kcs[0].kcs_reg = 1;
++                        ast_ipmi_kcs[0].regspacings = AST_IPMI_KCS0_REGSPACINGS;    //fix
++                        ast_ipmi_kcs[0].kcs_irq_hander = NULL;
++                        ast_ipmi_kcs[0].str = AST_KCS_REG_VA_BASE + AST_LPC_STR1;
++                        ast_ipmi_kcs[0].idr = AST_KCS_REG_VA_BASE + AST_LPC_IDR1;
++                        ast_ipmi_kcs[0].odr = AST_KCS_REG_VA_BASE + AST_LPC_ODR1;
++                        ast_set_ipmi_kcs_addr(0, 0xCA0);
++                        break;
++                case 1:
++                        ast_ipmi_kcs[1].kcs_reg = 1;
++                        ast_ipmi_kcs[1].regspacings = AST_IPMI_KCS1_REGSPACINGS;    //fix
++                        ast_ipmi_kcs[1].kcs_irq_hander = NULL;
++                        ast_ipmi_kcs[1].str = AST_KCS_REG_VA_BASE + AST_LPC_STR2;
++                        ast_ipmi_kcs[1].idr = AST_KCS_REG_VA_BASE + AST_LPC_IDR2;
++                        ast_ipmi_kcs[1].odr = AST_KCS_REG_VA_BASE + AST_LPC_ODR2;
++                        ast_set_ipmi_kcs_addr(1, 0xCA8);
++                        break;
++                case 2:
++                        ast_ipmi_kcs[2].kcs_reg = 1;
++                        ast_ipmi_kcs[2].regspacings = AST_IPMI_KCS2_REGSPACINGS;    //fix
++                        ast_ipmi_kcs[2].kcs_irq_hander = NULL;
++                        ast_ipmi_kcs[2].str = AST_KCS_REG_VA_BASE + AST_LPC_STR3;
++                        ast_ipmi_kcs[2].idr = AST_KCS_REG_VA_BASE + AST_LPC_IDR3;
++                        ast_ipmi_kcs[2].odr = AST_KCS_REG_VA_BASE + AST_LPC_ODR3;
++                        ast_set_ipmi_kcs_addr(2, 0xCA2);
++                        break;
++                case 3:
++                        ast_ipmi_kcs[3].kcs_reg = 1;
++                        ast_ipmi_kcs[3].regspacings = AST_IPMI_KCS3_REGSPACINGS;    //can change any
++                        ast_ipmi_kcs[3].kcs_irq_hander = NULL;
++                        ast_ipmi_kcs[3].str = AST_KCS_REG_VA_BASE + AST_LPC_STR4;
++                        ast_ipmi_kcs[3].idr = AST_KCS_REG_VA_BASE + AST_LPC_IDR4;
++                        ast_ipmi_kcs[3].odr = AST_KCS_REG_VA_BASE + AST_LPC_ODR4;
++                        ast_set_ipmi_kcs_addr(3, 0xCB2);
++                        break;
++        }
++
++        return &ast_ipmi_kcs[kcs_no];
++
++//	return NULL;
++}
++
++
++static irqreturn_t ast_kcs_isr (int this_irq, void *dev_id)
++{
++//	struct ast_lpc_data *ast_lpc = dev_id;
++//	LPC_DBUG("\n");
++	
++
++	//SNOOP
++#ifdef CONFIG_AST_SNOOP
++	if(ast_lpc_read(ast_lpc, AST_LPC_HICR6) & LPC_HICR6_STR_SNP0W) {
++		ast_lpc->ast_snoop[0].fifo[ast_lpc->ast_snoop[0].write_idx] =
++			GET_LPC_SNPD0(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR));
++#if 0
++		printk("Ch0 data %x \n",
++			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR)));
++		printk("Ch0 data in fifo widx %d : %x \n",
++		ast_lpc->ast_snoop[0].write_idx,
++		ast_lpc->ast_snoop[0].fifo[ast_lpc->ast_snoop[0].write_idx]);
++#endif
++		ast_lpc->ast_snoop[0].snoop_irq_hander(&ast_lpc->ast_snoop[0]);
++		ast_lpc_write(ast_lpc, LPC_HICR6_STR_SNP0W,  AST_LPC_HICR6);
++	}
++
++	if(ast_lpc_read(ast_lpc, AST_LPC_HICR6) & LPC_HICR6_STR_SNP1W) {
++		ast_lpc->ast_snoop[1].fifo[ast_lpc->ast_snoop[1].write_idx] =
++			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR));
++#if 0
++		printk("Ch1 data %x \n",
++			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR)));
++		printk("Ch1 data in fifo widx %d : %x \n",
++		ast_lpc->ast_snoop[0].write_idx,
++		ast_lpc->ast_snoop[1].fifo[ast_lpc->ast_snoop[1].write_idx]);
++#endif
++		ast_lpc->ast_snoop[1].snoop_irq_hander(&ast_lpc->ast_snoop[1]);
++		ast_lpc_write(ast_lpc, LPC_HICR6_STR_SNP1W,  AST_LPC_HICR6);
++	}
++#endif
++
++#ifdef CONFIG_AST_SNOOP_DMA
++	if(ast_lpc_read(ast_lpc, AST_LPC_PCCR2) & LPC_POST_CODE_STS) {
++    if (ast_lpc->ast_snoop_dma->snoop_irq_hander)
++      ast_lpc->ast_snoop_dma->snoop_irq_hander(ast_lpc->ast_snoop_dma);
++	}
++#endif
++
++	//kcs 1:
++	if(ast_kcs_read(AST_LPC_STR1) & LPC_STR_IBF) {
++		ast_ipmi_kcs[0].kcs_irq_hander(&ast_ipmi_kcs[0]);
++		return IRQ_HANDLED;
++	}
++	//kcs 2
++	if(ast_kcs_read(AST_LPC_STR2) & LPC_STR_IBF) {
++		ast_ipmi_kcs[2].kcs_irq_hander(&ast_ipmi_kcs[1]);
++		return IRQ_HANDLED;
++	}
++	//kcs 3
++#if 1
++	if(ast_kcs_read(AST_LPC_STR3) & LPC_STR_IBF) {
++		ast_ipmi_kcs[2].kcs_irq_hander(&ast_ipmi_kcs[2]);
++		return IRQ_HANDLED;
++	}
++	//kcs 4
++	if(ast_kcs_read(AST_LPC_STR4) & LPC_STR_IBF) {
++		ast_ipmi_kcs[3].kcs_irq_hander(&ast_ipmi_kcs[3]);
++		return IRQ_HANDLED;
++	}
++#endif
++#ifdef CONFIG_ASPEED_BT_IPMI_BMC_COMMENT
++	//bt 0
++	if(ast_lpc_read(ast_lpc, AST_LPC_HICR4) & LPC_HICS_BTENBL) {
++		return IRQ_NONE;
++//		ast_lpc->ast_bt[0].bt_irq_hander(&ast_lpc->ast_bt[0]);
++	}
++	//ibt 1
++	if(ast_lpc_read(ast_lpc, AST_LPC_IBTCR2) & LPC_iBT_H2B_RISING_ISR) {
++		return IRQ_NONE;
++//		ast_lpc->ast_bt[1].bt_irq_hander(&ast_lpc->ast_bt[1]);
++	}
++#endif
++	return IRQ_NONE;
++}
++
++
++static void ast_ipmi_kcs_rx(struct ast_kcs_data *ast_kcs)
++{
++	u8 b;
++	switch (ast_kcs->KCSPhase) {
++		case KCS_PHASE_WRITE:
++			KCS_DBG("KCS_PHASE_WRITE \n");
++			/* Set the state to write state */
++			write_kcs_status(ast_kcs, IPMI_KCS_WRITE_STATE);
++			/* Read the BYTE from the data register */
++			ast_kcs->pKCSRcvPkt[ast_kcs->KCSRcvPktIx] = read_kcs_data(ast_kcs);
++			KCS_DBG("rx data = [%x] \n", ast_kcs->pKCSRcvPkt[ast_kcs->KCSRcvPktIx]);
++			ast_kcs->KCSRcvPktIx++;
++			if(ast_kcs->KCSRcvPktIx > 272) {
++				printk("ERROR ---> TODO ... \n");
++				ast_kcs->KCSRcvPktIx--;
++			}
++			break;
++
++		case KCS_PHASE_WRITE_END :
++			KCS_DBG("KCS_PHASE_WRITE_END \n");
++			/* Set the state to READ_STATE */
++			write_kcs_status(ast_kcs, IPMI_KCS_READ_STATE);
++			/* Read the BYTE from the data register */
++			ast_kcs->pKCSRcvPkt[ast_kcs->KCSRcvPktIx] = read_kcs_data(ast_kcs);
++			KCS_DBG("rx data = [%x] \n", ast_kcs->pKCSRcvPkt[ast_kcs->KCSRcvPktIx]);
++			ast_kcs->KCSRcvPktIx++;
++
++			/* Move to READ Phase */
++			ast_kcs->KCSPhase = KCS_PHASE_READ;
++			/* Signal receive data ready */
++			ast_kcs->KCSPktRdy = 1;
++#if 0
++			printk(KERN_DEBUG "Total Rx Data : [");
++			for(i=0; i < ast_kcs->KCSRcvPktIx; i++)
++				printk(KERN_DEBUG " %x", ast_kcs->pKCSRcvPkt[i]);
++			printk(KERN_DEBUG "] \n");
++#endif
++			//trigger timeout --> TODO ~~~~
++			break;
++		case KCS_PHASE_READ:
++			KCS_DBG("KCS_PHASE_READ \n");
++
++			/* If we have reached the end of the packet move to idle state */
++			if (ast_kcs->KCSSendPktIx == ast_kcs->KCSSendPktLen)
++				write_kcs_status(ast_kcs, IPMI_KCS_IDLE_STATE);
++
++			/* Read the byte returned by the SMS */
++			b = read_kcs_cmd(ast_kcs);
++			//SA Need to clear IBF
++			//sa_0111 CLEAR_IBF_STATUS(ChannelNum);
++
++			if (b != KCS_READ_BYTE)
++			{
++				KCS_DBG("KCS_PHASE_READ : Set Error State TODO ~~~\n");
++				write_kcs_status(ast_kcs, IPMI_KCS_READ_STATE);
++				write_kcs_data(ast_kcs, 0);
++				//SA Set OBF Byte
++				break;
++			}
++
++			/* If we are finished transmitting, send the dummy byte */
++			if (ast_kcs->KCSSendPktIx == ast_kcs->KCSSendPktLen)
++			{
++				KCS_DBG("KCS_PHASE_READ : finished transmitting\n");
++				ast_kcs->KCSPhase = KCS_PHASE_IDLE;
++				write_kcs_data(ast_kcs, 0);
++				//SA Set OBF Byte
++
++				/* Set Transmission Complete */
++				break;
++			}
++			/* Transmit the next byte from the send buffer */
++			KCS_DBG("send idx %d : %x \n",ast_kcs->KCSSendPktIx, ast_kcs->pKCSSendPkt[ast_kcs->KCSSendPktIx]);
++			write_kcs_data(ast_kcs, ast_kcs->pKCSSendPkt[ast_kcs->KCSSendPktIx]);
++			ast_kcs->KCSSendPktIx++;
++
++			break;
++
++		case KCS_PHASE_ERROR1:
++			KCS_DBG("KCS_PHASE_ERROR1 \n");
++			/* Set the KCS State to READ_STATE */
++			write_kcs_status(ast_kcs, IPMI_KCS_READ_STATE);
++			/* Read the Dummy byte  */
++			read_kcs_data(ast_kcs);
++			/* Write the error code to Data out register */
++			write_kcs_data(ast_kcs, ast_kcs->KCSError);
++			/* Set to default error */
++			ast_kcs->KCSError = KCS_ABORTED_BY_COMMAND;
++
++			//SA Set OBF Byte
++
++			/* Set the abort phase to be error2 */
++			ast_kcs->KCSPhase = KCS_PHASE_ERROR2;
++	//		pKCSBuf->AbortPhase = ABORT_PHASE_ERROR2;
++			break;
++		case KCS_PHASE_ERROR2:
++			KCS_DBG("ABORT_PHASE_ERROR2 \n");
++			/**  * The system software has read the error code. Go to idle  * state. 	**/
++			write_kcs_status(ast_kcs, IPMI_KCS_IDLE_STATE);
++
++			/* Read the Dummy byte  */
++			read_kcs_data(ast_kcs);
++
++			ast_kcs->KCSPhase = KCS_PHASE_IDLE;
++	//		pKCSBuf->AbortPhase = 0;
++			/* Send the dummy byte  */
++			write_kcs_data(ast_kcs, 0);
++			break;
++		default:
++			KCS_DBG("rx default == > TODO .. \n");
++			/* Read the Dummy byte  */
++			read_kcs_data(ast_kcs);
++			break;
++	}
++}
++
++
++static void ast_ipmi_kcs_cmd_dat(struct ast_kcs_data *ast_kcs)
++{
++        u8 cmd;
++
++        /* Set the status to WRITE_STATE */
++        write_kcs_status(ast_kcs, IPMI_KCS_WRITE_STATE);
++
++        /* Read the command */
++        cmd = read_kcs_cmd(ast_kcs);
++
++        if (cmd == KCS_GET_STATUS_ABORT) {
++                /* Keep the status to WRITE_STATE */
++                /* Set the abort phase to be error1 */
++                ast_kcs->KCSPhase = KCS_PHASE_ERROR1;
++                ast_kcs->KCSPktRdy = 0;
++                ast_kcs->KCSSendWait = 0;
++                /* Send the dummy byte  */
++                write_kcs_data(ast_kcs, 0);
++            //    return;
++        }
++
++        if((ast_kcs->KCSPhase != KCS_PHASE_IDLE) && (ast_kcs->KCSPhase != KCS_PHASE_WRITE)) {
++                /* Set the error code if cmd when phase read, keep it if phase errors*/
++                if(ast_kcs->KCSPhase == KCS_PHASE_READ)
++                        ast_kcs->KCSError = KCS_ILLEGAL_CONTROL_CODE;
++                ast_kcs->KCSPhase = KCS_PHASE_ERROR;
++                ast_kcs->KCSPktRdy = 0;
++                ast_kcs->KCSSendWait = 0;
++                write_kcs_status(ast_kcs, IPMI_KCS_ERROR_STATE);
++//              printk("Err STAT %d, cmd %x \n", ast_kcs->KCSPhase, cmd);
++                return;
++        }
++
++        switch (cmd) {
++                case KCS_WRITE_START:
++                        KCS_DBG("KCS_WRITE_START \n");
++                        /* Set the Index to 0 */
++                        ast_kcs->KCSRcvPktIx = 0;
++                        /* Set the phase to WRITE */
++                        ast_kcs->KCSPhase = KCS_PHASE_WRITE;
++                        break;
++                case KCS_WRITE_END:
++                        /* Set the phase to write end */
++                        KCS_DBG("KCS_WRITE_END \n");
++                        ast_kcs->KCSPhase = KCS_PHASE_WRITE_END;
++//                      mod_timer(&ast_kcs->kcs_timer, jiffies + 5 * HZ);
++                        break;
++                default:
++                        KCS_DBG("undefine cmd %x \n", cmd);
++                        /* Invalid command code - Set an error state */
++                        ast_kcs->KCSError = KCS_ILLEGAL_CONTROL_CODE;
++                        /* Set the phase to error phase */
++                        ast_kcs->KCSPhase = KCS_PHASE_ERROR;
++                        ast_kcs->KCSPktRdy = 0;
++                        ast_kcs->KCSSendWait = 0;
++                        write_kcs_status(ast_kcs, IPMI_KCS_ERROR_STATE);
++                        break;
++        }
++}
++
++
++void request_ipmi_kcs_irq(u8 kcs_no, ast_ipmi_irq handler)
++{
++        ast_ipmi_kcs[kcs_no].kcs_irq_hander = handler;
++
++        switch(kcs_no) {
++                case 0:
++                        ast_kcs_write(ast_kcs_read( AST_LPC_HICR2) | LPC_IBFIF1, AST_LPC_HICR2);
++                        break;
++                case 1:
++                        ast_kcs_write( ast_kcs_read( AST_LPC_HICR2) | LPC_IBFIF2, AST_LPC_HICR2);
++                        break;
++                case 2:
++                        ast_kcs_write( ast_kcs_read( AST_LPC_HICR2) | LPC_IBFIF3, AST_LPC_HICR2);
++                        break;
++                case 3:
++                        ast_kcs_write(ast_kcs_read( AST_LPC_HICRB) | LPC_KCS4_RCV_INTR, AST_LPC_HICRB);
++                        break;
++        }
++}
++
++static void ast_ipmi_kcs_handle(void *data)
++{
++	
++        struct ast_kcs_data *ast_kcs = (struct ast_kcs_data *)data;
++        u32 str= read_kcs_status(ast_kcs) & (KCS_CMD_DAT | KCS_IBF);
++        switch(str) {
++                case (KCS_CMD_DAT | KCS_IBF):
++                        KCS_DBG("%d-LPC_STR_CMD_DAT | LPC_STR_IBF \n", ast_kcs->pdev->id);
++                        ast_ipmi_kcs_cmd_dat(ast_kcs); 
++                        break;
++                case KCS_IBF:
++                        KCS_DBG("%d-LPC_STR_IBF \n", ast_kcs->pdev->id);
++//                      mod_timer(&ast_kcs->kcs_timer, jiffies + 5 * HZ);
++                        ast_ipmi_kcs_rx(ast_kcs);
++                        break;
++                default:
++                        printk("%d-ERROR TODO \n", ast_kcs->pdev->id);
++                        break;
++        }
++}
++
++
++
++static struct kcs_bmc *file_kcs_bmc(struct file *file)
++{
++        return container_of(file->private_data, struct kcs_bmc, miscdev);
++}
++
++
++/**************************  KCS SYSFS  **********************************************************/
++static ssize_t
++store_ipmi_kcs_sms_atn(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
++{
++        u32 input_val;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        input_val = simple_strtoul(sysfsbuf, NULL, 10);
++        if(input_val)
++                writel(readl(ast_kcs->str) | (0x1 << 2), ast_kcs->str);
++        else
++                writel(readl(ast_kcs->str) & ~(0x1 << 2), ast_kcs->str);
++        return count;
++}
++
++static ssize_t
++show_ipmi_kcs_sms_atn(struct device *dev, struct device_attribute *attr, char *sysfsbuf)
++{
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        return sprintf(sysfsbuf, "%d\n", (readl(ast_kcs->str) & 0x4) >> 2);
++}
++static DEVICE_ATTR(sms_atn, S_IRUGO | S_IWUSR, show_ipmi_kcs_sms_atn, store_ipmi_kcs_sms_atn);
++
++static ssize_t
++store_ipmi_kcs_oem(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
++{
++        u32 input_val;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        input_val = simple_strtoul(sysfsbuf, NULL, 10);
++        input_val &= 0x3;
++        writel((readl(ast_kcs->str) & 0xcf) | (input_val << 4), ast_kcs->str);
++        return count;
++}
++
++static ssize_t
++show_ipmi_kcs_oem(struct device *dev, struct device_attribute *attr, char *sysfsbuf)
++{
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        return sprintf(sysfsbuf, "%x\n", (readl(ast_kcs->str) & 0xcf) >> 4);
++}
++static DEVICE_ATTR(oem, S_IRUGO | S_IWUSR, show_ipmi_kcs_oem, store_ipmi_kcs_oem);
++static ssize_t
++store_ipmi_kcs_str(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
++{
++        u32 input_val;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        input_val = StrToHex(sysfsbuf);
++        writel(input_val, ast_kcs->str);
++        return count;
++}
++
++static ssize_t
++show_ipmi_kcs_str(struct device *dev, struct device_attribute *attr, char *sysfsbuf)
++{
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        return sprintf(sysfsbuf, "%x\n", readl(ast_kcs->str));
++}
++static DEVICE_ATTR(str, S_IRUGO | S_IWUSR, show_ipmi_kcs_str, store_ipmi_kcs_str);
++
++static ssize_t
++store_ipmi_kcs_addr(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
++{
++        u32 input_val;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        input_val = StrToHex(sysfsbuf);
++        ast_set_ipmi_kcs_addr( ast_kcs->pdev->id, input_val);
++        return count;
++}
++
++static ssize_t
++show_ipmi_kcs_addr(struct device *dev, struct device_attribute *attr, char *sysfsbuf)
++{
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        return sprintf(sysfsbuf, "%x\n", ast_get_ipmi_kcs_addr(ast_kcs->pdev->id));
++}
++static DEVICE_ATTR(addr, S_IRUGO | S_IWUSR, show_ipmi_kcs_addr, store_ipmi_kcs_addr);
++
++static ssize_t
++store_ipmi_kcs_en(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
++{
++        u32 input_val;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        input_val = simple_strtoul(sysfsbuf, NULL, 10);
++        ast_set_ipmi_kcs_en( ast_kcs->pdev->id, input_val);
++        return count;
++}
++
++static ssize_t
++show_ipmi_kcs_en(struct device *dev, struct device_attribute *attr, char *sysfsbuf)
++{
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(dev);
++        return sprintf(sysfsbuf, "%d : %s\n", ast_get_ipmi_kcs_en(ast_kcs->pdev->id),ast_get_ipmi_kcs_en(ast_kcs->pdev->id) ? "Enable":"Disable");
++}
++
++static DEVICE_ATTR(enable, S_IRUGO | S_IWUSR, show_ipmi_kcs_en, store_ipmi_kcs_en);
++
++static struct attribute *ast_ipmi_kcs_attributes[] = {
++        &dev_attr_enable.attr,
++        &dev_attr_addr.attr,
++        &dev_attr_str.attr,
++        &dev_attr_sms_atn.attr,
++        &dev_attr_oem.attr,
++//      &dev_attr_buff.attr,
++        NULL
++};
++
++static const struct attribute_group ipmi_kcs_attribute_group = {
++        .attrs = ast_ipmi_kcs_attributes,
++//      .is_visible = ast_ipmi_kcs_attrs_visible,
++};
++
++/**********************************************************************************************************************/
++
++
++static int ast_kcs_open(struct inode *inode, struct file *file)
++{
++        struct miscdevice *c = file->private_data;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(c->this_device);
++
++        KCS_DBG("ast_kcs_open\n");
++
++        /* Flush input queue on first open */
++        if (ast_kcs->open_count)
++                return -1;
++
++        ast_kcs->open_count++;
++        return 0;
++}
++
++static int ast_kcs_release(struct inode *inode, struct file *file)
++{
++        struct miscdevice *c = file->private_data;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(c->this_device);
++
++        KCS_DBG("ast_kcs_release\n");
++        ast_kcs->open_count--;
++
++        return 0;
++}
++
++
++static ssize_t ast_kcs_data_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
++{
++        struct miscdevice *c = file->private_data;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(c->this_device);
++
++
++        if(ast_kcs->KCSPktRdy) {
++                if(copy_to_user(buf, ast_kcs->pKCSRcvPkt, ast_kcs->KCSRcvPktIx)) {
++                        dev_err(&(ast_kcs->pdev->dev), "read fail \n");
++                        return -EINVAL;
++                }
++                ast_kcs->KCSSendWait = 1;
++                ast_kcs->KCSPktRdy = 0;
++                return ast_kcs->KCSRcvPktIx;
++        } else {
++                return 0;
++        }
++}
++
++
++ssize_t ast_kcs_data_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
++{
++        struct miscdevice *c = file->private_data;
++        struct ast_kcs_data *ast_kcs = dev_get_drvdata(c->this_device);
++
++        if (count > AST_IPMI_PKT_SIZE) {
++                dev_err(&(ast_kcs->pdev->dev), "write too long, len = %d\n", (int)count);
++                return -EINVAL;
++        }
++
++        if(ast_kcs->KCSSendWait) {
++                KCS_DBG("count %d \n", count);
++                if(count) {
++                        if(copy_from_user(ast_kcs->pKCSSendPkt, buf, count)) {
++                                dev_err(&(ast_kcs->pdev->dev), "copy fail = %d, \n", (int)count);
++                                return -EINVAL;
++                        }
++                        ast_kcs->KCSSendWait = 0;
++                        /* Send the first byte */
++                        ast_kcs->KCSSendPktIx = 0;
++                        ast_kcs->KCSSendPktLen = count;
++                        KCS_DBG("send idx %d : %x \n",ast_kcs->KCSSendPktIx, ast_kcs->pKCSSendPkt[ast_kcs->KCSSendPktIx]);
++                        if(ast_kcs->KCSPhase == KCS_PHASE_READ) {
++                                ast_kcs->KCSSendPktIx++;
++        write_kcs_data(ast_kcs, ast_kcs->pKCSSendPkt[0]);
++                        } else {
++                                printk("KCS resp error \n");
++                                return -EINVAL;
++                        }
++                } else {
++                        ast_kcs->KCSError = KCS_UNSPECIFIED_ERROR;
++                        ast_kcs->KCSSendWait = 0;
++                        /* Send the first byte */
++                        ast_kcs->KCSSendPktIx = 0;
++                        ast_kcs->KCSSendPktLen = 0;
++                        write_kcs_status(ast_kcs, IPMI_KCS_ERROR_STATE);
++                }
++
++                return count;
++        } else {
++                return -EINVAL;
++        }
++
++}
++
++static const struct file_operations ast_kcs_fops = {
++        .owner          = THIS_MODULE,
++        .open           = ast_kcs_open,
++        .read           = ast_kcs_data_read,
++        .write          = ast_kcs_data_write,
++        .release        = ast_kcs_release,
++};
++
++
++static int ast_kcs_probe(struct platform_device *pdev)
++{
++        struct device *dev;
++        int rc,ret;
++	u32 id;
++
++        if (!pdev || !pdev->dev.of_node)
++                return -ENODEV;
++	
++        dev = &pdev->dev;
++        struct ast_kcs_data *ast_kcs;
++
++	rc = of_property_read_u32(dev->of_node, "kcs_chan", &id);
++	if ((rc != 0) || (id < 0 || id > 3)) {
++		dev_err(dev, "no valid kcs channel is configured\n");
++		return -ENODEV;
++	}
++
++	ast_kcs = register_ipmi_kcs_drv(id); 
++	if(ast_kcs == NULL){
++		printk("register_ipmi_kcs_drv failed\n");
++		return -1;
++	}
++        KCS_DBG("ast_kcs_probe\n");
++	ast_kcs->pdev = pdev;
++	ast_kcs->pdev->id = id;
++        ret = sysfs_create_group(&pdev->dev.kobj, &ipmi_kcs_attribute_group);
++        if (ret)
++                goto err_free_mem;
++
++
++        ast_kcs->pKCSRcvPkt = kmalloc(AST_IPMI_PKT_SIZE * 2, GFP_KERNEL);
++        ast_kcs->KCSRcvPktIx = 0;
++        ast_kcs->KCSPktRdy = 0;
++        ast_kcs->pKCSSendPkt = ast_kcs->pKCSRcvPkt + AST_IPMI_PKT_SIZE;
++        ast_kcs->KCSPhase = KCS_PHASE_IDLE;
++        ast_kcs->KCSError = KCS_ABORTED_BY_COMMAND;
++	ast_kcs->pdev = pdev;
++        ast_kcs->miscdev.minor   = MISC_DYNAMIC_MINOR,
++        ast_kcs->miscdev.name    = dev->of_node->name,
++        ast_kcs->miscdev.fops    = &ast_kcs_fops,
++        ast_kcs->miscdev.parent = dev;
++        rc = misc_register(&ast_kcs->miscdev);
++        if (rc) {
++                dev_err(dev, "Unable to register misc device\n");
++                goto err_free_mem;
++        }
++	request_ipmi_kcs_irq(id, ast_ipmi_kcs_handle);
++	if(!irq){
++
++        	irq = platform_get_irq(pdev, 0);
++        	if (!irq)
++                	return -ENODEV;
++
++      		rc = devm_request_irq(dev, irq, ast_kcs_isr,
++               	         IRQF_SHARED, DEVICE_NAME, ast_ipmi_kcs);
++        	if (rc < 0) {
++                	dev_err(dev, "Unable to request IRQ %d\n", irq);
++	                goto err_free_mem;
++        	}
++	}
++
++        platform_set_drvdata(pdev, ast_kcs);
++
++        dev_set_drvdata(ast_kcs->miscdev.this_device, ast_kcs);
++
++        printk(KERN_INFO "ast_kcs.%d: driver successfully loaded.\n",pdev->id);
++
++        return 0;
++
++
++err_free_mem:
++        kfree(ast_kcs->pKCSRcvPkt);
++
++        printk(KERN_WARNING "ast_kcs: driver init failed (ret=%d)!\n", ret);
++        return ret;
++}
++
++
++static int kcs_bmc_remove(struct platform_device *pdev)
++{
++        struct kcs_bmc *kcs_bmc = dev_get_drvdata(&pdev->dev);
++
++        misc_deregister(&kcs_bmc->miscdev);
++        if (!kcs_bmc->irq)
++                del_timer_sync(&kcs_bmc->poll_timer);
++        return 0;
++}
++
++
++static const struct of_device_id kcs_bmc_match[] = {
++        { .compatible = "aspeed,ast2400-kcs" },
++        { .compatible = "aspeed,ast2500-kcs-bmc" },
++        { },
++};
++static struct platform_driver kcs_bmc_driver = {
++        .driver = {
++                .name           = DEVICE_NAME,
++                .of_match_table = kcs_bmc_match,
++        },
++        .probe = ast_kcs_probe,
++        .remove = kcs_bmc_remove,
++};
++
++
++
++
++module_platform_driver(kcs_bmc_driver);
++
++MODULE_DEVICE_TABLE(of, kcs_bmc_match);
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Linux device interface to the IPMI KCS interface");
++
+diff --git a/include/uapi/linux/ast-kcs.h b/include/uapi/linux/ast-kcs.h
+new file mode 100644
+index 0000000..9050f8a
+--- /dev/null
++++ b/include/uapi/linux/ast-kcs.h
+@@ -0,0 +1,123 @@
++#ifndef __AST_KCS_H_
++#define __AST_KCS_H_
++
++
++
++struct kcs_parameter {
++        u8      ch_enable;
++        u8      ch_type;
++};
++
++
++#define KCS_CMD_DAT     0x8
++#define KCS_IBF                         0x2
++#define KCS_OBF                 0x1
++////////////////////////////////////////////
++/* KCS Command Control codes. */
++#define KCS_GET_STATUS_ABORT    0x60
++#define KCS_WRITE_START                 0x61
++#define KCS_WRITE_END                   0x62
++#define KCS_READ_BYTE                   0x68
++
++/* Status bits. */
++#define IPMI_KCS_IDLE_STATE             (0 << 6)
++#define IPMI_KCS_READ_STATE     (1 << 6)
++#define IPMI_KCS_WRITE_STATE    (2 << 6)
++#define IPMI_KCS_ERROR_STATE    (3 << 6)
++
++
++#define GET_STATUS_STATE(status) (((status) >> 6) & 0x03)
++#define GET_STATUS_ATN(status) ((status) & 0x04)
++#define GET_STATUS_IBF(status) ((status) & 0x02)
++#define GET_STATUS_OBF(status) ((status) & 0x01)
++
++/* KCS Error Codes */
++#define KCS_NO_ERROR                    0x00
++#define KCS_ABORTED_BY_COMMAND          0x01
++#define KCS_ILLEGAL_CONTROL_CODE        0x02
++#define KCS_LENGTH_ERROR                0x06
++#define KCS_UNSPECIFIED_ERROR           0xff
++
++////////////////////////////////////////////////////////////////
++#define AST_IO_VA       0xf0000000
++#define AST_IO(__pa)    ((void __iomem *)(((__pa) & 0x001fffff) | AST_IO_VA))
++
++#define DEVICE_NAME     "ast-ipmi-kcs"
++#define AST_KCS_REG_BASE            0x1E789000
++#define AST_KCS_REG_VA_BASE         AST_IO(AST_KCS_REG_BASE)
++
++#define AST_IPMI_PKT_SIZE               (512)
++typedef void (*ast_ipmi_irq)(void *data);
++
++/************************  IPMI KCS ****************************************/
++#define AST_KCS_NUM     5
++
++//#if defined(AST_SOC_G5) || defined(AST_SOC_G4)
++#define AST_IPMI_KCS0_REGSPACINGS                       4       //any
++#define AST_IPMI_KCS1_REGSPACINGS                       4       //any
++#define AST_IPMI_KCS2_REGSPACINGS                       1       //fix
++#define AST_IPMI_KCS3_REGSPACINGS                       1       //any
++/*#elif defined(AST_SOC_G3)
++#define AST_IPMI_KCS0_REGSPACINGS                       4       //fix
++#define AST_IPMI_KCS1_REGSPACINGS                       4       //fix
++#define AST_IPMI_KCS2_REGSPACINGS                       1       //fix
++#define AST_IPMI_KCS3_REGSPACINGS                       1       //any
++//#else
++//#error "Not define SoC generation"
++#endif
++*/
++enum kcs_states {
++        KCS_PHASE_IDLE = 0,
++        KCS_PHASE_WRITE,
++        KCS_PHASE_WRITE_END,
++        KCS_PHASE_READ,
++        KCS_PHASE_ERROR,
++        KCS_PHASE_ERROR1,
++        KCS_PHASE_ERROR2,
++        /* The hardware failed to follow the state machine. */
++        KCS_PHASE_HOSED
++};
++
++
++
++struct ast_kcs_data {
++        //driver information
++        struct platform_device *pdev;
++        int                     open_count;
++        struct miscdevice       miscdev;
++        u8                              kcs_reg;                                /* register info */
++//        struct ast_lpc_data     *ast_lpc;
++
++        //-> phase state
++        enum kcs_states         KCSPhase;
++        u8  KCSError;
++        //RX
++        u32     KCSRcvPktIx;
++        u8      *pKCSRcvPkt;
++        u8      KCSPktRdy;
++        //Tx
++        u8      KCSSendWait;
++        u16     KCSSendPktIx;
++        u16     KCSSendPktLen;
++        u8      *pKCSSendPkt;
++        //register offset -- >
++        void __iomem                    *str;
++        void __iomem                    *idr;
++       void __iomem                    *odr;
++        u8      regspacings;
++        /* cdriver callbacks */
++        ast_ipmi_irq     kcs_irq_hander;        /* buffer done callback */
++};
++
++struct kcs_bmc {
++        struct device           dev;
++        struct miscdevice       miscdev;
++        struct regmap           *map;
++        int                     offset;
++        int                     irq;
++        wait_queue_head_t       queue;
++        struct timer_list       poll_timer;
++        struct mutex            mutex;
++};
++
++#endif
+diff --git a/include/uapi/linux/regs-lpc.h b/include/uapi/linux/regs-lpc.h
+new file mode 100644
+index 0000000..5b98364
+--- /dev/null
++++ b/include/uapi/linux/regs-lpc.h
+@@ -0,0 +1,306 @@
++/* arch/arm/plat-aspeed/include/mach/regs-lpc.h
++ *
++ * Copyright (c) 2012 ASPEED Technology Inc. <ryan_chen@aspeedtech.com>
++ *		http://www.aspeedtech.com/
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * ASPEED LPC Controller
++*/
++
++#ifndef __AST_LPC_H_
++#define __AST_LPC_H_
++
++#define AST_LPC_HICR0				0x000
++#define AST_LPC_HICR1				0x004
++#define AST_LPC_HICR2				0x008	/* Host Interface Control Register 2 */
++#define AST_LPC_HICR3				0x00C
++#define AST_LPC_HICR4				0x010
++#define AST_LPC_LADR3H				0x014
++#define AST_LPC_LADR3L				0x018
++#define AST_LPC_LADR12H				0x01C
++#define AST_LPC_LADR12L				0x020
++#define AST_LPC_IDR1				0x024
++#define AST_LPC_IDR2				0x028
++#define AST_LPC_IDR3				0x02C
++#define AST_LPC_ODR1				0x030
++#define AST_LPC_ODR2				0x034
++#define AST_LPC_ODR3				0x038
++#define AST_LPC_STR1				0x03C
++#define AST_LPC_STR2				0x040
++#define AST_LPC_STR3				0x044
++#define AST_LPC_BTR0				0x048
++#define AST_LPC_BTR1				0x04C
++#define AST_LPC_BTCSR0				0x050
++#define AST_LPC_BTCSR1				0x054
++#define AST_LPC_BTCR				0x058
++#define AST_LPC_BTDTR				0x05C
++#define AST_LPC_BTIMSR				0x060
++#define AST_LPC_BTFVSR0				0x064
++#define AST_LPC_BTFVSR1				0x068
++#define AST_LPC_SIRQCR0				0x06C
++#define AST_LPC_SIRQCR1				0x070
++#define AST_LPC_SIRQCR2				0x074
++#define AST_LPC_SIRQCR3				0x078
++
++//////
++#define AST_LPC_HICR5				0x080	/* LPC Host interface Control Register 5 */
++#define AST_LPC_HICR6				0x084	/* LPC Host Interface Control Register 6 */
++#define AST_LPC_HICR7				0x088
++#define AST_LPC_HICR8				0x08C
++#define AST_LPC_SNPWADR				0x090	/* LPC Snoop Address Register */
++#define AST_LPC_SNPWDR				0x094	/* LPC SNoop Data Register */
++#define AST_LPC_HICR9				0x098
++#define AST_LPC_HICRA				0x09C	/* Host Interface Control Register A */
++#define AST_LPC_LHCR0				0x0A0
++#define AST_LPC_LHCR1				0x0A4
++#define AST_LPC_LHCR2				0x0A8
++#define AST_LPC_LHCR3				0x0AC
++#define AST_LPC_LHCR4				0x0B0
++#define AST_LPC_LHCR5				0x0B4
++#define AST_LPC_LHCR6				0x0B8
++#define AST_LPC_LHCR7				0x0BC
++#define AST_LPC_LHCR8				0x0C0
++#define AST_LPC_PCCR6				0x0C4
++#define AST_LPC_LHCRA				0x0C8
++#define AST_LPC_LHCRB				0x0CC
++
++
++#define AST_LPC_PCCR4				0x0D0	/* Post Code Control Regiter 4 */
++#define AST_LPC_PCCR5				0x0D4	/* Post Code Control Regiter 5 */
++
++#define AST_LPC_HICRB				0x100
++#define AST_LPC_HICRC				0x104
++#define AST_LPC_HISR0				0x108
++#define AST_LPC_HISR1				0x10C
++#define AST_LPC_LADR4				0x110
++#define AST_LPC_IDR4				0x114
++#define AST_LPC_ODR4				0x118
++#define AST_LPC_STR4				0x11C
++#define AST_LPC_LSADR12			0x120
++#define AST_LPC_IDR5				0x124
++#define AST_LPC_ODR5				0x128
++#define AST_LPC_STR5				0x12C
++#define AST_LPC_PCCR0				0x130	/*Post Code Contol Register 0 */
++#define AST_LPC_PCCR1				0x134	/*Post Code Contol Register 1 */
++#define AST_LPC_PCCR2				0x138	/*Post Code Contol Register 2 */
++#define AST_LPC_PCCR3				0x13C	/*Post Code Contol Register 3 */
++
++#define AST_LPC_IBTCR0				0x140
++#define AST_LPC_IBTCR1				0x144
++#define AST_LPC_IBTCR2				0x148
++#define AST_LPC_IBTCR3				0x14C
++#define AST_LPC_IBTCR4				0x150
++#define AST_LPC_IBTCR5				0x154
++#define AST_LPC_IBTCR6				0x158
++#define AST_LPC_SRUART1				0x15C
++#define AST_LPC_SRUART2				0x160
++#define AST_LPC_SRUART3				0x164
++#define AST_LPC_SRUART4				0x168
++#define AST_LPC_SCR0SIO				0x16C
++#define AST_LPC_SCR0SI1				0x170
++#define AST_LPC_SCR0SI2				0x174
++#define AST_LPC_SCR0SI3				0x17C
++
++#define AST_LPC_SWCR0300			0x180
++#define AST_LPC_SWCR0704			0x184
++#define AST_LPC_SWCR0B08			0x188
++#define AST_LPC_SWCR0F0C			0x18C
++#define AST_LPC_SWCR1310			0x190
++#define AST_LPC_SWCR1714			0x194
++#define AST_LPC_SWCR1B18			0x198
++#define AST_LPC_SWCR1F1C			0x19C
++#define AST_LPC_ACPIE3E0			0x1A0
++#define AST_LPC_ACPIC1C0			0x1A4
++#define AST_LPC_ACPIB3B0			0x1A8
++#define AST_LPC_ACPIB7B4			0x1AC
++
++/* AST_LPC_HICR0				0x000 		*/
++#define LPC_LPC3_EN					(1 << 7)
++#define LPC_LPC2_EN					(1 << 6)
++#define LPC_LPC1_EN					(1 << 5)
++
++#define LPC_SDWNE					(1 << 3)
++#define LPC_PMEE					(1 << 2)
++
++/* AST_LPC_HICR2				0x008		*/
++#define LPC_LRST					(1 << 6)
++#define LPC_SDWN					(1 << 5)
++#define LPC_ABRT					(1 << 4)
++#define LPC_IBFIF3					(1 << 3)
++#define LPC_IBFIF2					(1 << 2)
++#define LPC_IBFIF1					(1 << 1)
++#define LPC_EERIE					(1)
++
++/*	AST_LPC_HICR4				0x010		*/
++#define LPC_HICS_LADR12AS			(1 << 7)
++#define LPC_HICS_CLRINTLRSTR		(1 << 6)
++#define LPC_HICS_STSINTLRSTR		(1 << 5)
++#define LPC_HICS_ENINTLRSTR			(1 << 4)
++/* bit 3 reserved */
++#define LPC_HICS_KCSENBL			(1 << 2)
++/* bit 1 reserved */
++#define LPC_HICS_BTENBL				(1)
++
++/*	AST_LPC_STR1				0: 0x03C, 1: 0x40, 2 : 0x44, 3: 4:		*/
++#define LPC_STR_DBU4				(1 << 7)		
++#define LPC_STR_DBU3				(1 << 6)
++#define LPC_STR_DBU2				(1 << 5)
++#define LPC_STR_DBU1				(1 << 4)
++#define LPC_STR_CMD_DAT				(1 << 3)
++#define LPC_STR_DBU0				(1 << 2)
++#define LPC_STR_IBF					(1 << 1)
++#define LPC_STR_OBF					(1)
++
++/* AST_LPC_HICR5				0x080	- LPC Host interface Control Register */
++#define LPC_HICR5_ENSIOGIO			(1 << 31)
++#define LPC_HICR5_EN80HGIO			(1 << 30)
++#define LPC_HICR5_ENINVGIO			(1 << 29)
++#define LPC_HICR5_GET_SEL80HGIO(x)	((x >> 24) & 0x1f)
++#define LPC_HICR5_ENFWH				(1 << 10)
++#define LPC_HICR5_ENL2H				(1 << 8)
++#define LPC_HICR5_SNP1INT_EN		(1 << 3)
++#define LPC_HICR5_SNP1W_EN			(1 << 2)
++#define LPC_HICR5_SNP0INT_EN		(1 << 1)
++#define LPC_HICR5_SNP0W_EN			(1)
++
++/* AST_LPC_HICR6				0x084	- LPC Host Interface Control Register 6 */
++#define LPC_HICR6_STR_BAUD			(1 << 3)
++#define LPC_HICR6_STR_PME			(1 << 2)
++#define LPC_HICR6_STR_SNP1W			(1 << 1)
++#define LPC_HICR6_STR_SNP0W			(1)
++
++/* AST_LPC_SNPWADR				0x090	- LPC Snoop Address Register*/
++#define LPC_SNOOP_ADDR1_MASK		(0xffff << 16)
++#define LPC_GET_SNOOP_ADDR1(x)	((x >> 16) & 0xffff)
++#define LPC_SNOOP_ADDR0_MASK		(0xffff)
++#define LPC_GET_SNOOP_ADDR0(x)	(x & 0xffff)
++
++/* AST_LPC_SNPWDR				0x094	- LPC SNoop Data Register */
++#define GET_LPC_SNPD1(x)			((x >> 7) & 0xff)
++#define GET_LPC_SNPD0(x)			(x & 0xff)
++
++
++#define SET_LPC_SEL6IO(x,value)		((x & ~(0x7 << 8)) |(value << 8))
++#define GET_LPC_SEL6IO(x)			((x >> 8) & 0x7)
++
++/* AST_LPC_HICR9				0x098	- LPC Host Interface Control Register 9 */
++#define LPC_HICR9_SOURCE_UART1			(1 << 4)
++#define LPC_HICR9_SOURCE_UART2			(1 << 5)
++#define LPC_HICR9_SOURCE_UART3			(1 << 6)
++#define LPC_HICR9_SOURCE_UART4			(1 << 7)
++
++/* AST_LPC_HICRA				0x09C	Host Interface Control Register A */
++#define SET_LPC_SEL5DW(x,value)		((x & ~(0x7 << 28)) |(value << 28))
++#define GET_LPC_SEL5DW(x)			((x >> 28) & 0x7)
++#define SET_LPC_SEL4DW(x,value)		((x & ~(0x7 << 25)) |(value << 25))
++#define GET_LPC_SEL4DW(x)			((x >> 25) & 0x7)
++#define SET_LPC_SEL3DW(x,value)		((x & ~(0x7 << 22)) |(value << 22))
++#define GET_LPC_SEL3DW(x)			((x >> 22) & 0x7)
++#define SET_LPC_SEL2DW(x,value)		((x  & ~(0x7 << 19)) | (value << 19))
++#define GET_LPC_SEL2DW(x)			((x >> 19) & 0x7)
++#define SET_LPC_SEL1DW(x,value)		((x  & ~(0x7 << 16)) | (value << 16))
++#define GET_LPC_SEL1DW(x)			((x >> 16) & 0x7)
++
++#define SET_LPC_SEL5IO(x,value)		((x & ~(0x7 << 12)) |(value << 12))
++#define GET_LPC_SEL5IO(x)			((x >> 12) & 0x7)
++#define SET_LPC_SEL4IO(x,value)		((x & ~(0x7 << 9)) |(value << 9))
++#define GET_LPC_SEL4IO(x)			((x >> 9) & 0x7)
++#define SET_LPC_SEL3IO(x,value)		((x & ~(0x7 << 6)) |(value << 6))
++#define GET_LPC_SEL3IO(x)			((x >> 6) & 0x7)
++#define SET_LPC_SEL2IO(x,value)		((x  & ~(0x7 << 3)) | (value << 3))
++#define GET_LPC_SEL2IO(x)			((x >> 3) & 0x7)
++#define SET_LPC_SEL1IO(x,value)		(((x) & ~0x7) | value)
++#define GET_LPC_SEL1IO(x)			((x) & 0x7)
++
++
++
++
++/* define AST_LPC_HICRB				0x100 - Host Interface Control Register */
++#define LPC_KCS5_RCV_INTR			(1 << 3)
++#define LPC_KCS5_OIBF_INTR			(1 << 2)
++#define LPC_KCS4_RCV_INTR			(1 << 1)
++#define LPC_KCS4_EN					(1 << 0)
++
++/*AST_LPC_PCCR0				0x130	- Post Code Contol Register 0 */
++#define LPC_POST_DMA_INT_EN			(1 << 31)
++#define LPC_POST_DMA_MODE_EN		(1 << 14)
++#define LPC_RX_FIFO_CLR				(1 << 7)
++#define LPC_POST_
++#define LPC_POST_CODE_MODE_MASK		(0x3 << 4)
++#define GET_LPC_POST_CODE_MODE(x)		((x >> 4) & 0x3)
++#define LPC_POST_CODE_MODE(x)		(x << 4)
++#define BYTE_MODE	0
++#define WORD_MODE	1
++#define DWORD_MODE	2
++#define FULL_MODE	3
++
++#define LPC_POST_CODE_RXOVR			(1 << 3)
++#define LPC_POST_CODE_RXTO			(1 << 2)
++#define LPC_POST_CODE_RXAVA			(1 << 1)
++#define LPC_POST_CODE_EN			(1)
++
++/*AST_LPC_PCCR1				0x134	Post Code Contol Register 1 */
++#define LPC_POST_ADDR_MASK		0x00ffff
++#define LPC_DONT_CARE_MASK		0x3f0000
++
++
++/*AST_LPC_PCCR2				0x138	Post Code Contol Register 2 */
++#define LPC_POST_CODE_DMA_RDY		(1 << 4)
++#define LPC_POST_CODE_STS			(1)
++
++/* AST_LPC_IBTCR0				0x140	iBT Control Register 0 */
++#define LPC_iBT_SET_ADDR(x)		(x << 16)
++#define LPC_iBT_GET_ADDR(x)		((x & 0xffff0000) >> 16)
++#define LPC_iBT_ADDR_MASK		(0xffff << 16)
++
++#define LPC_iBT_SET_IRQ(x)		((x & 0xf) << 12)
++#define LPC_iBT_GET_IRQ(x)		((x & 0xf000) >> 12)
++#define LPC_iBT_IRQ_MASK		(0xf << 12)
++#define LPC_iBT_IRQ_TYPE_MASK	(0x3 << 10)
++
++#define LPC_iBT_ClrSvWrP_EN		(1 << 3)
++#define LPC_iBT_ClrSvRdP_EN 		(1 << 2)
++#define LPC_iBT_ENABLE 			(1)
++
++/* AST_LPC_IBTCR1				0x144	iBT Control Register 1 */
++
++/* AST_LPC_IBTCR2				0x148	iBT Control Register 2 */
++#define LPC_iBT_BMC_HWRST_ISR		(0x1 << 15)
++
++#define LPC_iBT_OEM3_RISING_ISR		(0x1 << 14)
++#define LPC_iBT_OEM2_RISING_ISR		(0x1 << 13)
++#define LPC_iBT_OEM1_RISING_ISR		(0x1 << 12)
++
++#define LPC_iBT_SREAD_OV_ISR		(0x1 << 11)
++#define LPC_iBT_SWRITE_OV_ISR		(0x1 << 10)
++#define LPC_iBT_HREAD_OV_ISR		(0x1 << 9)
++#define LPC_iBT_HWRITE_OV_ISR		(0x1 << 8)
++
++#define LPC_iBT_HBUSY_FALLING_ISR	(0x1 << 6)
++#define LPC_iBT_SMS_FALLING_ISR		(0x1 << 5)
++#define LPC_iBT_B2H_FALLING_ISR		(0x1 << 4)
++
++#define LPC_iBT_OEM0_RISING_ISR		(0x1 << 1)
++#define LPC_iBT_H2B_RISING_ISR		(0x1)
++
++/* #define AST_LPC_IBTCR3				0x14C */
++#define LPC_iBT_GET_HOST_RP(x)		((x & 0x7F000000) >> 24)
++#define LPC_iBT_GET_HOST_WP(x)		((x & 0x007F0000) >> 16)
++
++
++
++
++/* AST_LPC_IBTCR4				0x150	iBT Control Register 4 */
++#define BT_CLR_WR_PTR	0x01	/* See IPMI 1.5 table 11.6.4 */
++#define BT_CLR_RD_PTR	0x02
++#define BT_H2B_ATN	0x04
++#define BT_B2H_ATN	0x08
++#define BT_SMS_ATN	0x10
++#define BT_OEM0		0x20
++#define BT_H_BUSY	0x40
++#define BT_B_BUSY	0x80
++
++#endif 
+-- 
+1.9.1
+
