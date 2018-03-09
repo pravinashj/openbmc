@@ -16,7 +16,7 @@ ROOT = "${STAGING_DIR_TARGET}"
 DEPENDS += "dbus \
                   "
 SYSTEMD_SERVICE_${PN} = " obmc-kcs.service"
-LDFLAGS += "-L ${ROOT}/usr/lib/ -lsystemd -lsdbusplus -ldbus-1 -ldbus-glib-1"
+LDFLAGS += "-L ${ROOT}/usr/lib/ -lsystemd -lsdbusplus -ldbus-1 "
 #CFLAGS += ""
 LDFLAGS += "-pthread"
 do_compile() {  
