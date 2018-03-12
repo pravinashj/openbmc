@@ -1,0 +1,72 @@
+--- a/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-12 10:47:03.232781888 +0000
++++ b/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-12 10:16:26.676834871 +0000
+@@ -58,6 +58,11 @@
+ 		enable-gpios = <&gpio ASPEED_GPIO(D, 0) GPIO_ACTIVE_HIGH>;
+ 		trans-gpios = <&gpio ASPEED_GPIO(H, 6) GPIO_ACTIVE_HIGH>;
+ 	};
++    iio-hwmon {
++        compatible = "iio-hwmon";
++        io-channels = <&adc 0>, <&adc 1>, <&adc 2>, <&adc 3>,
++	<&adc 4>, <&adc 5>, <&adc 6>, <&adc 7>;
++    };
+ };
+ 
+ &fmc {
+@@ -104,6 +109,57 @@
+ 	status = "okay";
+ };
+ 
++
++&i2c0 {
++	status = "okay";
++
++};
++
++&i2c1 {
++	status = "okay";
++	
++	tmp423@4c {
++		compatible = "ti,tmp423";
++		reg = <0x4c>;
++	};
++};
++
++&i2c2 {
++	status = "okay";
++
++};
++
++&i2c3 {
++	status = "okay";
++
++};
++
++&i2c4 {
++	status = "okay";
++};
++
++&i2c5 {
++	status = "okay";
++};
++
++&i2c6 {
++	status = "okay";
++	
++	tmp423@4c {
++		compatible = "ti,tmp423";
++		reg = <0x4c>;
++	};
++};
++
++&i2c7 {
++	status = "okay";
++};
++
++&i2c8 {
++	status = "okay";
++	
++};
++
+ &i2c0 {
+ 	status = "okay";
+ 
