@@ -10,7 +10,6 @@ inherit obmc-phosphor-utils
 
 KSRC ?= "git://github.com/openbmc/linux;protocol=git;branch=${KBRANCH}"
 SRC_URI = "${KSRC}"
-SRC_URI += "file://0002-arch-arm-boot-dts-aspeed-bmc-opp-palmetto.patch"
 SRC_URI += "file://phosphor-gpio-keys.scc"
 SRC_URI += "file://phosphor-gpio-keys.cfg"
 SRC_URI += "file://phosphor-vlan.scc"
