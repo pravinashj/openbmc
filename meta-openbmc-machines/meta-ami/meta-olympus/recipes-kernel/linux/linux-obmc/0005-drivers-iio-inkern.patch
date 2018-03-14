@@ -1,0 +1,36 @@
+--- a/drivers/iio/inkern.c	2018-03-12 10:47:14.208781572 +0000
++++ b/drivers/iio/inkern.c	2018-03-14 11:28:01.613450102 +0000
+@@ -548,7 +548,6 @@
+ 	} else
+ 		ret = chan->indio_dev->info->read_raw(chan->indio_dev,
+ 					chan->channel, val, val2, info);
+-
+ 	return ret;
+ }
+ 
+@@ -595,6 +594,7 @@
+ 	s64 raw64 = raw;
+ 	int ret;
+ 
++    
+ 	ret = iio_channel_read(chan, &offset, NULL, IIO_CHAN_INFO_OFFSET);
+ 	if (ret >= 0)
+ 		raw64 += offset;
+@@ -629,7 +629,8 @@
+ 				     scale_val2);
+ 		break;
+ 	case IIO_VAL_FRACTIONAL_LOG2:
+-		*processed = (raw64 * (s64)scale_val * scale) >> scale_val2;
++		//*processed = (raw64 * (s64)scale_val * scale) >> scale_val2;
++		*processed = raw64;
+ 		break;
+ 	default:
+ 		return -EINVAL;
+@@ -694,6 +695,7 @@
+ 	}
+ 
+ 	if (iio_channel_has_info(chan->channel, IIO_CHAN_INFO_PROCESSED)) {
++        
+ 		ret = iio_channel_read(chan, val, NULL,
+ 				       IIO_CHAN_INFO_PROCESSED);
+ 	} else {

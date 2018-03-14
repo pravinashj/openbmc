@@ -1,0 +1,34 @@
+--- a/drivers/iio/adc/aspeed_adc.c	2018-03-12 10:47:14.004781578 +0000
++++ b/drivers/iio/adc/aspeed_adc.c	2018-03-14 11:28:01.593450103 +0000
+@@ -96,10 +96,30 @@
+ 	struct aspeed_adc_data *data = iio_priv(indio_dev);
+ 	const struct aspeed_adc_model_data *model_data =
+ 			of_device_get_match_data(data->dev);
++    int res1,res2;
++    int raw_data = 0, tmp1,tmp2;
+ 
+ 	switch (mask) {
+ 	case IIO_CHAN_INFO_RAW:
+-		*val = readw(data->base + chan->address);
++		raw_data = readw(data->base + chan->address);
++        switch (chan->channel)
++        {
++            case 0:
++            case 5:
++            case 7:
++                res1 = 1000; res2 = 1000;break;
++            case 1:
++            case 6:
++                res1 = 1800; res2 = 1000;break;
++            case 2:
++                res1 = 5600; res2 = 1000;break;
++        
++        }
++        tmp1 =(res1 + res2) * (raw_data) * 25 /10;
++	    tmp2 = res2;
++        
++	    *val = (tmp1/tmp2);
++         
+ 		return IIO_VAL_INT;
+ 
+ 	case IIO_CHAN_INFO_SCALE:
