@@ -1,0 +1,34 @@
+--- git_ori/sensorhandler.h	2018-03-15 17:12:07.787724175 -0400
++++ git/sensorhandler.h	2018-03-15 17:14:23.819391186 -0400
+@@ -12,6 +12,7 @@
+     IPMI_CMD_GET_SENSOR_READING = 0x2D,
+     IPMI_CMD_GET_SENSOR_TYPE    = 0x2F,
+     IPMI_CMD_SET_SENSOR         = 0x30,
++    IPMI_CMD_GET_SENSOR_THRESHOLD = 0x27,
+ };
+ 
+ // Discrete sensor types.
+@@ -38,6 +39,23 @@
+ int set_sensor_dbus_state_y(uint8_t , const char *, const uint8_t);
+ int find_openbmc_path(uint8_t , dbus_interface_t *);
+ 
++struct GetSensorThresholdReq
++{
++    uint8_t number;
++} __attribute__((packed));
++
++struct GetSensorThresholdRes
++{
++    uint8_t readableMask;
++    uint8_t lnc;
++    uint8_t lc;
++    uint8_t lnr;
++    uint8_t unc;
++    uint8_t uc;
++    uint8_t unr;
++} __attribute__((packed));
++
++
+ /**
+  * @struct SetSensorReadingReq
+  *

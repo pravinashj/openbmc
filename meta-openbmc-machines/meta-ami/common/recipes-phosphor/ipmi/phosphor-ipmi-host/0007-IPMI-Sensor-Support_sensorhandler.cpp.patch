@@ -1,0 +1,148 @@
+--- git_ori/sensorhandler.cpp	2018-03-15 17:45:06.267098156 -0400
++++ git/sensorhandler.cpp	2018-03-15 17:50:31.590348290 -0400
+@@ -475,6 +475,8 @@
+     sd_bus *bus = ipmid_get_sd_bus_connection();
+     sd_bus_message *reply = NULL;
+     int reading = 0;
++    int64_t scale;
++    float value = 0;
+ 
+     printf("IPMI GET_SENSOR_READING [0x%02x]\n",reqptr->sennum);
+ 
+@@ -559,13 +561,38 @@
+                 break;
+             }
+ 
++            /* Modifiers to reading info */
++            // Get scale
++            if (0 > sd_bus_get_property_trivial(bus,
++                                        a.bus,
++                                        a.path,
++                                        a.interface,
++                                        "Scale",
++                                        NULL,
++                                        'x',
++                                        &scale)) {
++               fprintf(stderr, "Expected to find Scale interface in bus %s, path %s, but it was missing.\n",
++                    a.bus, a.path);
++               return IPMI_CC_SENSOR_INVALID;
++            }
++
++		printf("expR=%d B=%d expB=%d M=%d raw_val=%lld scale=%lld\n",sensor.exponentR,sensor.coefficientB,sensor.exponentB,sensor.coefficientM,raw_value,scale);
++
+             // Prevent div0
+             if (sensor.coefficientM == 0) {
+                 sensor.coefficientM = 1;
+             };
++	    
++            value = (raw_value * pow(10,scale));
++
++            //To do - Voltage sense method should be based on SOC
++            if(sensor.R2)
++            {
++              value = (value * (2.5/1024) * ((sensor.R1 + sensor.R2)/sensor.R2));
++            }
++            /* Raw Reading (X) = ( (Y/ 10^K2) - (B * 10^K1))/ M */
++            resp->value = static_cast<uint8_t>(((value / pow(10, sensor.exponentR)) - (sensor.coefficientB * pow(10, sensor.exponentB))) / sensor.coefficientM);
+ 
+-            resp->value = static_cast<uint8_t>(
+-                    (raw_value - sensor.scaledOffset) / sensor.coefficientM);
+             resp->operation = 1<<6; // scanning enabled
+             resp->indication[0] = 0; // not a threshold sensor. ignore
+             resp->indication[1] = 0;
+@@ -772,26 +799,10 @@
+ 
+         free(raw_cstr);
+ 
+-        /* Modifiers to reading info */
+-        // Get scale
+-        int64_t scale;
+-        if (0 > sd_bus_get_property_trivial(bus,
+-                                        iface.bus,
+-                                        iface.path,
+-                                        iface.interface,
+-                                        "Scale",
+-                                        NULL,
+-                                        'x',
+-                                        &scale)) {
+-            fprintf(stderr, "Expected to find Scale interface in bus %s, path %s, but it was missing.\n",
+-                    iface.bus, iface.path);
+-            return IPMI_CC_SENSOR_INVALID;
+-        }
+-
+         get_sdr::body::set_b(info->coefficientB, body);
+         get_sdr::body::set_m(info->coefficientM, body);
+         get_sdr::body::set_b_exp(info->exponentB, body);
+-        get_sdr::body::set_r_exp(scale, body);
++        get_sdr::body::set_r_exp(info->exponentR, body);
+ 
+         /* ID string */
+         std::string id_string = info->sensorPath.substr(
+@@ -845,6 +856,8 @@
+ 
+         /* Key */
+         record.key.sensor_number = sensor_id;
++	record.key.owner_id = 0x20; //Need to dynamically assign the value
++	record.key.owner_lun = 0x00; //Need to dynamically assign the value
+ 
+         /* Body */
+         record.body.entity_id = sensor_id;
+@@ -872,6 +885,44 @@
+     return ret;
+ }
+ 
++ipmi_ret_t ipmi_sen_get_sensor_threshold(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
++                            ipmi_request_t request, ipmi_response_t response,
++                            ipmi_data_len_t data_len, ipmi_context_t context)
++{
++    ipmi_ret_t ret = IPMI_CC_OK;
++    GetSensorThresholdReq *req = (GetSensorThresholdReq*)request;
++    GetSensorThresholdRes *resp = (GetSensorThresholdRes*)response;
++
++    dbus_interface_t iface;
++    sdbusplus::bus::bus bus(ipmid_get_sd_bus_connection());
++
++    if (0 > find_openbmc_path(req->number, &iface))
++            return IPMI_CC_SENSOR_INVALID;
++
++    auto propWarn = ipmi::getAllDbusProperties(
++                                         bus,
++                                         iface.bus,
++                                         iface.path,
++                                         "xyz.openbmc_project.Sensor.Threshold.Warning");
++
++    auto propCrit = ipmi::getAllDbusProperties(
++                                         bus,
++                                         iface.bus,
++                                         iface.path,
++                                         "xyz.openbmc_project.Sensor.Threshold.Critical");
++
++
++    resp->unc = propWarn["WarningHigh"].get<std::int64_t>();
++    resp->lnc = propWarn["WarningLow"].get<std::int64_t>();
++    resp->uc = propCrit["CriticalHigh"].get<std::int64_t>();
++    resp->lc = propCrit["CriticalLow"].get<std::int64_t>();
++
++    /* To do - Should be based on settable/readable mask from SDR */
++    resp->readableMask = 0x1B;
++
++    *data_len = sizeof(GetSensorThresholdRes);	
++    return ret;
++}
+ 
+ void register_netfn_sen_functions()
+ {
+@@ -923,6 +974,13 @@
+     ipmi_register_callback(NETFUN_SENSOR, IPMI_CMD_GET_SDR,
+                            nullptr, ipmi_sen_get_sdr,
+                            PRIVILEGE_USER);
++    
++    // <Get Sensor Threshold>
++    printf("Registering NetFn:[0x%X], Cmd:[0x%x]\n",
++           NETFUN_SENSOR, IPMI_CMD_GET_SENSOR_THRESHOLD);
++    ipmi_register_callback(NETFUN_SENSOR, IPMI_CMD_GET_SENSOR_THRESHOLD,
++                           nullptr, ipmi_sen_get_sensor_threshold,
++                           PRIVILEGE_USER);
+ 
+     return;
+ }

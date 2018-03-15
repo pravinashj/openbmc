@@ -2,4 +2,7 @@ FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
 SRC_URI_append += "file://0001-chassishandler.cpp.patch"
 SRC_URI_append += "file://0002-MasterWriteRead_Implementation.patch"
 SRC_URI_append += "file://0003-Returned-error-code-for-get_self_test-command.patch"
-
+SRC_URI_append += "file://0004-IPMI-Sensor-Support_sensorhandler.h.patch"
+SRC_URI_append += "file://0005-IPMI-Sensor-Support_types.hpp.patch"
+SRC_URI_append += "file://0006-IPMI-Sensor-Support_writesensor.mako.cpp.patch"
+SRC_URI_append += "file://0007-IPMI-Sensor-Support_sensorhandler.cpp.patch"

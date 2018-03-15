@@ -1,0 +1,32 @@
+--- git_ori/types.hpp	2018-03-15 17:12:07.787724175 -0400
++++ git/types.hpp	2018-03-15 17:14:23.819391186 -0400
+@@ -49,10 +49,11 @@
+ using InstancePath = std::string;
+ using Type = uint8_t;
+ using ReadingType = uint8_t;
+-using Multiplier = uint16_t;
+-using OffsetB = uint16_t;
+-using Exponent = uint8_t;
+-using ScaledOffset = int64_t;
++using Multiplier = int16_t;
++using OffsetB = int8_t;
++using ExponentB = int8_t;
++using ExponentR = int8_t;
++//using ScaledOffset = int64_t;
+ 
+ struct Info
+ {
+@@ -62,8 +63,11 @@
+    ReadingType sensorReadingType;
+    Multiplier coefficientM;
+    OffsetB coefficientB;
+-   Exponent exponentB;
+-   ScaledOffset scaledOffset;
++   ExponentB exponentB;
++   ExponentR exponentR;
++   uint8_t R1;
++   uint8_t R2;
++//   ScaledOffset scaledOffset;
+    std::function<uint8_t(SetSensorReadingReq&, const Info&)> updateFunc;
+    DbusInterfaceMap propertyInterfaces;
+ };
