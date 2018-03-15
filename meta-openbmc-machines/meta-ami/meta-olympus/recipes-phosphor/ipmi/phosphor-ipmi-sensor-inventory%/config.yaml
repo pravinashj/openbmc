@@ -1,0 +1,181 @@
+0x01:
+  sensorType: 0x01
+  path: /xyz/openbmc_project/sensors/temperature/Temp_Outlet
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Temperature
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -1
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x02:
+  sensorType: 0x01
+  path: /xyz/openbmc_project/sensors/temperature/Temp_2U_SensorB
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Temperature
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -1
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x03:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P3V3
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x04:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P5V
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x05:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P12V_AUX
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x06:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P1V05_STBY_PCH
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 1
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x07:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/PVNN_STBY_PCH
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 1
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x08:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P3V3_STBY
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0x09:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P5V_STBY
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+0xA:
+  sensorType: 0x02
+  path: /xyz/openbmc_project/sensors/voltage/P3V_VBAT
+  sensorReadingType: 0x01
+  serviceInterface: xyz.openbmc_project.Sensor.Volatge
+  readingType: assertion
+  multiplierM: 10
+  offsetB: 0
+  bExp: 0
+  rExp: -2
+  R1: 0
+  R2: 0
+  interfaces:
+    xyz.openbmc_project.Sensor.Value:
+      Value:
+        0x0:
+          type: int
+
+
