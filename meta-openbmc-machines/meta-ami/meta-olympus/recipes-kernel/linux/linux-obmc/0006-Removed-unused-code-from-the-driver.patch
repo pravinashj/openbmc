@@ -1,0 +1,259 @@
+From f6348eaadaeaf1d58db303ed8cabc9ec7b063b98 Mon Sep 17 00:00:00 2001
+From: OpenEmbedded <oe.patch@oe>
+Date: Fri, 16 Mar 2018 19:17:59 +0530
+Subject: [PATCH 6/6] Removed unused code from the driver
+
+---
+ drivers/char/ipmi/ipmikcs-bmc.c | 131 +++++++++-------------------------------
+ 1 file changed, 30 insertions(+), 101 deletions(-)
+
+diff --git a/drivers/char/ipmi/ipmikcs-bmc.c b/drivers/char/ipmi/ipmikcs-bmc.c
+index 8a8374f..3b63e96 100644
+--- a/drivers/char/ipmi/ipmikcs-bmc.c
++++ b/drivers/char/ipmi/ipmikcs-bmc.c
+@@ -1,12 +1,3 @@
+-/*
+- *Copyright (c) 2015-2016, IBM Corporation.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License
+- * as published by the Free Software Foundation; either version
+- * 2 of the License, or (at your option) any later version.
+- */
+-
+ #include <linux/atomic.h>
+ #include <linux/regs-lpc.h>
+ #include <linux/errno.h>
+@@ -26,16 +17,18 @@
+ #include <linux/device.h>
+ #include <linux/delay.h>
+ #include <linux/ast-kcs.h>
+-#define CONFIG_KCS_DEBUG 1
++
++//#define CONFIG_KCS_DEBUG 1
+ #ifdef CONFIG_KCS_DEBUG
+ #define KCS_DBG(fmt, args...) printk(KERN_DEBUG "%s() " fmt,__FUNCTION__, ## args)
+ #else
+ #define KCS_DBG(fmt, args...)
+ #endif
+ 
++#define AST_KCS_NUM 4
+ 
+ int irq = 0;
+-struct ast_kcs_data ast_ipmi_kcs[4] = {0};
++struct ast_kcs_data ast_ipmi_kcs[AST_KCS_NUM] = {0};
+ 
+ static atomic_t open_count = ATOMIC_INIT(0);
+ 
+@@ -265,16 +258,8 @@ void ast_set_ipmi_kcs_addr( u8 kcs_ch, u16 kcs_addr)   //Done completely
+ 
+ struct ast_kcs_data *register_ipmi_kcs_drv(u8 kcs_no)  
+ {
+-	printk("kcs : in register_ipmi_kcs_drv() for %d \n",kcs_no);	
+-/*	if(ast_ipmi_kcs == NULL)
+-	{	
+-		ast_ipmi_kcs = kzalloc(sizeof(struct ast_kcs_data) * AST_KCS_NUM, GFP_KERNEL);
+-		if(ast_ipmi_kcs == NULL){
+-			printk("Memory allocation failed\n");
+-			return NULL;
+-		}
+-		printk("Allocating data for kcs%d\n",kcs_no);
+-	}*/
++	printk("kcs :Registering KCS device - %d \n",kcs_no);
++	
+         switch(kcs_no) {
+                 case 0:
+                         ast_ipmi_kcs[0].kcs_reg = 1;
+@@ -316,54 +301,12 @@ struct ast_kcs_data *register_ipmi_kcs_drv(u8 kcs_no)
+ 
+         return &ast_ipmi_kcs[kcs_no];
+ 
+-//	return NULL;
+ }
+ 
+ 
+ static irqreturn_t ast_kcs_isr (int this_irq, void *dev_id)
+ {
+-//	struct ast_lpc_data *ast_lpc = dev_id;
+-//	LPC_DBUG("\n");
+ 	
+-
+-	//SNOOP
+-#ifdef CONFIG_AST_SNOOP
+-	if(ast_lpc_read(ast_lpc, AST_LPC_HICR6) & LPC_HICR6_STR_SNP0W) {
+-		ast_lpc->ast_snoop[0].fifo[ast_lpc->ast_snoop[0].write_idx] =
+-			GET_LPC_SNPD0(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR));
+-#if 0
+-		printk("Ch0 data %x \n",
+-			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR)));
+-		printk("Ch0 data in fifo widx %d : %x \n",
+-		ast_lpc->ast_snoop[0].write_idx,
+-		ast_lpc->ast_snoop[0].fifo[ast_lpc->ast_snoop[0].write_idx]);
+-#endif
+-		ast_lpc->ast_snoop[0].snoop_irq_hander(&ast_lpc->ast_snoop[0]);
+-		ast_lpc_write(ast_lpc, LPC_HICR6_STR_SNP0W,  AST_LPC_HICR6);
+-	}
+-
+-	if(ast_lpc_read(ast_lpc, AST_LPC_HICR6) & LPC_HICR6_STR_SNP1W) {
+-		ast_lpc->ast_snoop[1].fifo[ast_lpc->ast_snoop[1].write_idx] =
+-			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR));
+-#if 0
+-		printk("Ch1 data %x \n",
+-			GET_LPC_SNPD1(ast_lpc_read(ast_lpc, AST_LPC_SNPWDR)));
+-		printk("Ch1 data in fifo widx %d : %x \n",
+-		ast_lpc->ast_snoop[0].write_idx,
+-		ast_lpc->ast_snoop[1].fifo[ast_lpc->ast_snoop[1].write_idx]);
+-#endif
+-		ast_lpc->ast_snoop[1].snoop_irq_hander(&ast_lpc->ast_snoop[1]);
+-		ast_lpc_write(ast_lpc, LPC_HICR6_STR_SNP1W,  AST_LPC_HICR6);
+-	}
+-#endif
+-
+-#ifdef CONFIG_AST_SNOOP_DMA
+-	if(ast_lpc_read(ast_lpc, AST_LPC_PCCR2) & LPC_POST_CODE_STS) {
+-    if (ast_lpc->ast_snoop_dma->snoop_irq_hander)
+-      ast_lpc->ast_snoop_dma->snoop_irq_hander(ast_lpc->ast_snoop_dma);
+-	}
+-#endif
+-
+ 	//kcs 1:
+ 	if(ast_kcs_read(AST_LPC_STR1) & LPC_STR_IBF) {
+ 		ast_ipmi_kcs[0].kcs_irq_hander(&ast_ipmi_kcs[0]);
+@@ -375,7 +318,6 @@ static irqreturn_t ast_kcs_isr (int this_irq, void *dev_id)
+ 		return IRQ_HANDLED;
+ 	}
+ 	//kcs 3
+-#if 1
+ 	if(ast_kcs_read(AST_LPC_STR3) & LPC_STR_IBF) {
+ 		ast_ipmi_kcs[2].kcs_irq_hander(&ast_ipmi_kcs[2]);
+ 		return IRQ_HANDLED;
+@@ -385,19 +327,6 @@ static irqreturn_t ast_kcs_isr (int this_irq, void *dev_id)
+ 		ast_ipmi_kcs[3].kcs_irq_hander(&ast_ipmi_kcs[3]);
+ 		return IRQ_HANDLED;
+ 	}
+-#endif
+-#ifdef CONFIG_ASPEED_BT_IPMI_BMC_COMMENT
+-	//bt 0
+-	if(ast_lpc_read(ast_lpc, AST_LPC_HICR4) & LPC_HICS_BTENBL) {
+-		return IRQ_NONE;
+-//		ast_lpc->ast_bt[0].bt_irq_hander(&ast_lpc->ast_bt[0]);
+-	}
+-	//ibt 1
+-	if(ast_lpc_read(ast_lpc, AST_LPC_IBTCR2) & LPC_iBT_H2B_RISING_ISR) {
+-		return IRQ_NONE;
+-//		ast_lpc->ast_bt[1].bt_irq_hander(&ast_lpc->ast_bt[1]);
+-	}
+-#endif
+ 	return IRQ_NONE;
+ }
+ 
+@@ -622,13 +551,6 @@ static void ast_ipmi_kcs_handle(void *data)
+ }
+ 
+ 
+-
+-static struct kcs_bmc *file_kcs_bmc(struct file *file)
+-{
+-        return container_of(file->private_data, struct kcs_bmc, miscdev);
+-}
+-
+-
+ /**************************  KCS SYSFS  **********************************************************/
+ static ssize_t
+ store_ipmi_kcs_sms_atn(struct device *dev, struct device_attribute *attr, const char *sysfsbuf, size_t count)
+@@ -863,10 +785,9 @@ static int ast_kcs_probe(struct platform_device *pdev)
+ 
+ 	ast_kcs = register_ipmi_kcs_drv(id); 
+ 	if(ast_kcs == NULL){
+-		printk("register_ipmi_kcs_drv failed\n");
+-		return -1;
++		dev_err(dev,"register_ipmi_kcs_drv failed\n");
++		return -ENODEV;
+ 	}
+-        KCS_DBG("ast_kcs_probe\n");
+ 	ast_kcs->pdev = pdev;
+ 	ast_kcs->pdev->id = id;
+         ret = sysfs_create_group(&pdev->dev.kobj, &ipmi_kcs_attribute_group);
+@@ -875,6 +796,11 @@ static int ast_kcs_probe(struct platform_device *pdev)
+ 
+ 
+         ast_kcs->pKCSRcvPkt = kmalloc(AST_IPMI_PKT_SIZE * 2, GFP_KERNEL);
++	if(ast_kcs->pKCSRcvPkt == NULL)
++	{
++		dev_err(dev,"Memory allocation failed\n");
++		goto err_free_mem;
++	}	
+         ast_kcs->KCSRcvPktIx = 0;
+         ast_kcs->KCSPktRdy = 0;
+         ast_kcs->pKCSSendPkt = ast_kcs->pKCSRcvPkt + AST_IPMI_PKT_SIZE;
+@@ -885,8 +811,8 @@ static int ast_kcs_probe(struct platform_device *pdev)
+         ast_kcs->miscdev.name    = dev->of_node->name,
+         ast_kcs->miscdev.fops    = &ast_kcs_fops,
+         ast_kcs->miscdev.parent = dev;
+-        rc = misc_register(&ast_kcs->miscdev);
+-        if (rc) {
++        ret = misc_register(&ast_kcs->miscdev);
++        if (ret) {
+                 dev_err(dev, "Unable to register misc device\n");
+                 goto err_free_mem;
+         }
+@@ -894,12 +820,14 @@ static int ast_kcs_probe(struct platform_device *pdev)
+ 	if(!irq){
+ 
+         	irq = platform_get_irq(pdev, 0);
+-        	if (!irq)
+-                	return -ENODEV;
++        	if (!irq){
++			dev_err(dev, "Could not IRQ number\n");
++                	goto err_free_mem;
++		}
+ 
+-      		rc = devm_request_irq(dev, irq, ast_kcs_isr,
++      		ret = devm_request_irq(dev, irq, ast_kcs_isr,
+                	         IRQF_SHARED, DEVICE_NAME, ast_ipmi_kcs);
+-        	if (rc < 0) {
++        	if (ret < 0) {
+                 	dev_err(dev, "Unable to request IRQ %d\n", irq);
+ 	                goto err_free_mem;
+         	}
+@@ -915,20 +843,21 @@ static int ast_kcs_probe(struct platform_device *pdev)
+ 
+ 
+ err_free_mem:
+-        kfree(ast_kcs->pKCSRcvPkt);
++	if(ast_kcs->pKCSRcvPkt != NULL)
++	        kfree(ast_kcs->pKCSRcvPkt);
+ 
+         printk(KERN_WARNING "ast_kcs: driver init failed (ret=%d)!\n", ret);
+         return ret;
+ }
+ 
+-
+-static int kcs_bmc_remove(struct platform_device *pdev)
++static int ast_kcs_remove(struct platform_device *pdev)
+ {
+-        struct kcs_bmc *kcs_bmc = dev_get_drvdata(&pdev->dev);
++        struct ast_kcs_data *ast_kcs = platform_get_drvdata(pdev);
++        KCS_DBG("ast_kcs_remove\n");
++        misc_deregister(&ast_kcs->miscdev);
++        ast_kcs->kcs_reg = 0;
++        kfree(ast_kcs->pKCSRcvPkt);
+ 
+-        misc_deregister(&kcs_bmc->miscdev);
+-        if (!kcs_bmc->irq)
+-                del_timer_sync(&kcs_bmc->poll_timer);
+         return 0;
+ }
+ 
+@@ -944,7 +873,7 @@ static struct platform_driver kcs_bmc_driver = {
+                 .of_match_table = kcs_bmc_match,
+         },
+         .probe = ast_kcs_probe,
+-        .remove = kcs_bmc_remove,
++	.remove = ast_kcs_remove,
+ };
+ 
+ 
+-- 
+2.7.4
+
