@@ -44,8 +44,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 1000
+  R2: 1000 
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -62,8 +62,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 1800 
+  R2: 1000
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -80,8 +80,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 5600 
+  R2: 1000 
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -134,8 +134,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 1000 
+  R2: 1000
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -152,8 +152,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 1800 
+  R2: 1000
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -170,8 +170,8 @@
   offsetB: 0
   bExp: 0
   rExp: -2
-  R1: 0
-  R2: 0
+  R1: 1000 
+  R2: 1000 
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
