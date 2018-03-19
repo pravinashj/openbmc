@@ -1,0 +1,12 @@
+--- a/drivers/iio/inkern.c	2018-03-19 14:15:46.736696903 +0000
++++ b/drivers/iio/inkern.c	2018-03-19 14:25:56.024679326 +0000
+@@ -629,7 +629,8 @@
+ 				     scale_val2);
+ 		break;
+ 	case IIO_VAL_FRACTIONAL_LOG2:
+-		*processed = (raw64 * (s64)scale_val * scale) >> scale_val2;
++		//*processed = (raw64 * (s64)scale_val * scale) >> scale_val2;
++		*processed = raw64;
+ 		break;
+ 	default:
+ 		return -EINVAL;
