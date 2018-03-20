@@ -24,8 +24,8 @@
 -   ScaledOffset scaledOffset;
 +   ExponentB exponentB;
 +   ExponentR exponentR;
-+   uint8_t R1;
-+   uint8_t R2;
++   int16_t R1;
++   int16_t R2;
 +//   ScaledOffset scaledOffset;
     std::function<uint8_t(SetSensorReadingReq&, const Info&)> updateFunc;
     DbusInterfaceMap propertyInterfaces;
