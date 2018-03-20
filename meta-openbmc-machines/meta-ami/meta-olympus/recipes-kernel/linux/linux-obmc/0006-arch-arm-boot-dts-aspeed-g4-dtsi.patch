@@ -1,0 +1,18 @@
+--- a/arch/arm/boot/dts/aspeed-g4.dtsi	2018-03-20 10:10:50.430628313 +0000
++++ b/arch/arm/boot/dts/aspeed-g4.dtsi	2018-03-20 10:48:24.574824220 +0000
+@@ -255,6 +255,15 @@
+ 				reg = <0x1e785020 0x1c>;
+ 				status = "disabled";
+ 			};
++			pwm_tacho: pwm-tacho-controller@1e786000 {
++				compatible = "aspeed,ast2400-pwm-tacho";
++				#address-cells = <1>;
++				#size-cells = <1>;
++                                #cooling-cells = <2>;
++				reg = <0x1e786000 0x1000>;
++				clocks = <&clk_apb>;
++				//resets = <&syscon ASPEED_RESET_PWM>;
++			};
+ 
+ 			uart1: serial@1e783000 {
+ 				compatible = "ns16550a";

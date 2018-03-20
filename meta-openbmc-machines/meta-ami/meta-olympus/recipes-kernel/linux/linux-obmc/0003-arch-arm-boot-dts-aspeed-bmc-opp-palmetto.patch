@@ -1,5 +1,5 @@
---- a/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-12 10:47:03.232781888 +0000
-+++ b/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-12 10:16:26.676834871 +0000
+--- a/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-20 10:10:50.426628313 +0000
++++ b/arch/arm/boot/dts/aspeed-bmc-opp-palmetto.dts	2018-03-20 10:44:43.656345935 +0000
 @@ -58,6 +58,11 @@
  		enable-gpios = <&gpio ASPEED_GPIO(D, 0) GPIO_ACTIVE_HIGH>;
  		trans-gpios = <&gpio ASPEED_GPIO(H, 6) GPIO_ACTIVE_HIGH>;
@@ -12,61 +12,81 @@
  };
  
  &fmc {
-@@ -104,6 +109,57 @@
+@@ -103,6 +108,41 @@
+ &uart5 {
  	status = "okay";
  };
- 
-+
 +&i2c0 {
 +	status = "okay";
-+
 +};
-+
 +&i2c1 {
 +	status = "okay";
-+	
 +	tmp423@4c {
 +		compatible = "ti,tmp423";
 +		reg = <0x4c>;
 +	};
 +};
-+
 +&i2c2 {
 +	status = "okay";
-+
 +};
-+
 +&i2c3 {
 +	status = "okay";
-+
 +};
-+
 +&i2c4 {
 +	status = "okay";
 +};
-+
 +&i2c5 {
 +	status = "okay";
 +};
-+
 +&i2c6 {
 +	status = "okay";
-+	
 +	tmp423@4c {
 +		compatible = "ti,tmp423";
 +		reg = <0x4c>;
 +	};
 +};
-+
 +&i2c7 {
 +	status = "okay";
 +};
-+
 +&i2c8 {
 +	status = "okay";
-+	
 +};
-+
+ 
  &i2c0 {
  	status = "okay";
- 
+@@ -325,3 +365,35 @@
+ &wdt2 {
+ 	status = "okay";
+ };
++&pwm_tacho {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pwm0_default
++		&pinctrl_pwm1_default
++		&pinctrl_pwm2_default
++		&pinctrl_pwm3_default>;
++	fan@0 {
++		reg = <0x00>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x00>;
++	};
++	fan@1 {
++		reg = <0x01>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x01>;
++	};
++	fan@2 {
++		reg = <0x02>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x02>;
++	};
++	fan@3 {
++		reg = <0x03>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x03>;
++	};
++	fan@4 {
++		reg = <0x04>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x04>;
++	};
++	fan@5 {
++		reg = <0x05>;
++		aspeed,fan-tach-ch = /bits/ 8 <0x05>;
++	};
++};
