@@ -99,7 +99,7 @@
   bExp: 0
   rExp: -2
   R1: 0
-  R2: 0
+  R2: 1
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -117,7 +117,7 @@
   bExp: 0
   rExp: -2
   R1: 0
-  R2: 0
+  R2: 1
   interfaces:
     xyz.openbmc_project.Sensor.Value:
       Value:
@@ -182,12 +182,12 @@
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_0
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -200,12 +200,12 @@
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_1
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -213,17 +213,16 @@
       Value:
         0x0:
           type: int
-
 0xD:
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_2
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -231,18 +230,16 @@
       Value:
         0x0:
           type: int
-
-
 0xE:
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_3
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -250,17 +247,16 @@
       Value:
         0x0:
           type: int
-
 0xF:
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_4
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -268,18 +264,16 @@
       Value:
         0x0:
           type: int
-
-
 0x10:
   sensorType: 0x04
   path: /xyz/openbmc_project/sensors/fan_tach/Fan_5
   sensorReadingType: 0x01
-  serviceInterface: xyz.openbmc_project.Sensor.Fan_Tach
+  serviceInterface: xyz.openbmc_project.Sensor.Fan
   readingType: assertion
-  multiplierM: 10
+  multiplierM: 255
   offsetB: 0
   bExp: 0
-  rExp: -2
+  rExp: 0
   R1: 0 
   R2: 0 
   interfaces:
@@ -287,5 +281,3 @@
       Value:
         0x0:
           type: int
-
-
