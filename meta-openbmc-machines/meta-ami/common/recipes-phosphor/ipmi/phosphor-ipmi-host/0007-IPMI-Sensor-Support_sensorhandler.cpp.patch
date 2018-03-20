@@ -40,7 +40,7 @@
 +            //To do - Voltage sense method should be based on SOC
 +            if(sensor.R2)
 +            {
-+              value = (value * (2.5/1024) * ((sensor.R1 + sensor.R2)/sensor.R2));
++               value = (value * (2.5/1024) * ((float)(sensor.R1 + sensor.R2)/(float)sensor.R2));
 +            }
 +            /* Raw Reading (X) = ( (Y/ 10^K2) - (B * 10^K1))/ M */
 +            resp->value = static_cast<uint8_t>(((value / pow(10, sensor.exponentR)) - (sensor.coefficientB * pow(10, sensor.exponentB))) / sensor.coefficientM);
