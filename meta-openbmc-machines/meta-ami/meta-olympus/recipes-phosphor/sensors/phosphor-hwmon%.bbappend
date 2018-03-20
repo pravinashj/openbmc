@@ -10,6 +10,7 @@ do_install_append() {
 NAMES = " \
         apb/i2c@1e78a000/i2c-bus@80/tmp423@4c \
         apb/i2c@1e78a000/i2c-bus@1c0/tmp423@4c \
+        apb/pwm-tacho-controller@1e786000 \
         "
 
 ITEMSFMT = "ahb/{0}.conf"
