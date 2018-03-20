@@ -1,0 +1,15 @@
+--- git/sysfs.cpp	2018-03-20 11:40:44.359734327 -0400
++++ git_mod/sysfs.cpp	2018-03-20 11:41:42.095676475 -0400
+@@ -175,6 +175,12 @@
+     }
+     catch (const std::exception& e)
+     {
++
++       // For few sensor devices, reading may not be vailable or not able to access the attribute when BMC is booting.
++       // Example FAN, CPU or Node Manager. Once host gets powered ON then only BMC can be to access these devices.
++       // if we return error process gets exit, not able to monitor these devises when it is ready after power ON.
++        return value;
++
+         // Too many GCC bugs (53984, 66145) to do
+         // this the right way...
+ 

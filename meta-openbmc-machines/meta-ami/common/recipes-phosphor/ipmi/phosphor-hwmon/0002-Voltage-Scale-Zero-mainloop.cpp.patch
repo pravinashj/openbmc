@@ -1,0 +1,11 @@
+--- git_ori/mainloop.cpp	2018-03-20 10:54:27.192600376 -0400
++++ git/mainloop.cpp	2018-03-20 10:37:23.244568484 -0400
+@@ -81,7 +81,7 @@
+     std::make_tuple(
+         hwmon::type::cvolt,
+         ValueInterface::Unit::Volts,
+-        -3,
++        0,
+         "voltage"),
+     std::make_tuple(
+         hwmon::type::ccurr,
