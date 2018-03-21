@@ -1,0 +1,36 @@
+--- git_ori/board/aspeed/ast-g4/ast-g4.c	2018-03-21 16:52:45.031756506 -0400
++++ git/board/aspeed/ast-g4/ast-g4.c	2018-03-21 16:59:34.998938352 -0400
+@@ -72,6 +72,10 @@
+ #define BOARD_ID_DVT  0x30000000
+ #define BOARD_ID_PVT  0x40000000
+ #define BOARD_ID_MASK 0x70000000
++
++#define WATCHDOG_BASE 0x1E785000
++#define CTRL_REG	0x2C
++
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+ void Olympus_GPIO_setting(void)
+@@ -271,6 +275,14 @@
+ 	return 0;
+ }
+ 
++void Disable_WatchDog()
++{
++	u32 reg;
++        reg = readl(WATCHDOG_BASE + CTRL_REG);
++        reg &= 0xFFFFFFFC;
++        writel(reg,WATCHDOG_BASE + CTRL_REG);
++}
++
+ void ChassisPowerOn()
+ {
+         u32 reg;
+@@ -318,6 +330,7 @@
+ 	writel(reg, AST_SCU_BASE + AST_SCU_CLK_SEL);
+ 
+ 	ChassisPowerOn();
++	Disable_WatchDog();
+ 	return 0;
+ }
+ 
