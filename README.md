@@ -44,7 +44,7 @@ Palmetto | ```meta-openbmc-machines/meta-openpower/meta-ibm/meta-palmetto/conf``
 Barreleye | ```meta-openbmc-machines/meta-openpower/meta-rackspace/meta-barreleye/conf```
 Zaius| ```meta-openbmc-machines/meta-openpower/meta-ingrasys/meta-zaius/conf```
 Witherspoon| ```meta-openbmc-machines/meta-openpower/meta-ibm/meta-witherspoon/conf```
-
+Olympus| ```meta-openbmc-machines/meta-ami/meta-olympus/conf```
 
 As an example target Palmetto
 ```
