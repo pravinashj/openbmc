@@ -1,7 +1,6 @@
 FILESEXTRAPATHS_prepend := "${THISDIR}/linux-obmc:"
 SRC_URI += "file://olympus.cfg"
 SRC_URI += "file://0001-Added-KCS-interface-support.patch"
-SRC_URI += "file://0002-Commented-VUART-support.patch"
 SRC_URI += "file://0003-arch-arm-boot-dts-aspeed-bmc-opp-palmetto.patch"
 SRC_URI += "file://0004-drivers-iio-inkern.patch"
 SRC_URI += "file://0005-Removed-unused-code-from-the-driver.patch"

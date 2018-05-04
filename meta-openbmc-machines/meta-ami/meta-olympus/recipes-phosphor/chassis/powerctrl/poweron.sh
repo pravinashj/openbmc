@@ -1,7 +1,11 @@
 #!/bin/bash
 
-/sbin/devmem 0x1e780004 32 0x0F70e676
-/sbin/devmem 0x1e780000 32 0x330EEFBF
+pwrstatus=$(gpioutil -n E2 --getval)
+
+if [ $pwrstatus -eq 0 ]; then
+/usr/sbin/gpioutil -n D3 --setval 0
 sleep 2
-/sbin/devmem 0x1e780000 32 0x3B0EEFBF
+/usr/sbin/gpioutil -n D3 --setval 1
+fi
+
 exit 0

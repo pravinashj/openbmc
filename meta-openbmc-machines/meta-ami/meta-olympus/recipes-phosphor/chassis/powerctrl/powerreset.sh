@@ -1,7 +1,8 @@
 #!/bin/bash
 
-/sbin/devmem 0x1e780004 32 0x2070e676
-/sbin/devmem 0x1e780000 32 0xDB0EFFBF
-sleep 1
-/sbin/devmem 0x1e780000 32 0xFB0EFFBF
+/usr/sbin/gpioutil -n D5 --setdir out
+/usr/sbin/gpioutil -n D5 --setval 0
+sleep 2
+/usr/sbin/gpioutil -n D5 --setval 1
+
 exit 0
